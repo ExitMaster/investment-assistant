@@ -1,6 +1,5 @@
 // Vercel Serverless Function: /api/quote?symbol=QQQ
 // 브라우저 → 이 함수(같은 도메인) → Yahoo (서버간, CORS 없음) → 시세 반환.
-// 공개 프록시 의존을 제거하기 위한 자체 프록시.
 
 export default async function handler(req, res) {
   const symbol = (req.query.symbol || "").trim();
@@ -9,7 +8,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  // 한국 종목: 6자리 숫자면 Yahoo 형식으로 변환 (.KS 코스피 → 실패 시 .KQ 코스닥)
   const isKR = /^\d{6}$/.test(symbol);
   const candidates = isKR ? [`${symbol}.KS`, `${symbol}.KQ`] : [symbol];
 
@@ -41,9 +39,21 @@ export default async function handler(req, res) {
     }
     const meta = result.meta || {};
     const price = meta.regularMarketPrice ?? null;
-    const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
+
+    // 전일 종가: meta의 previousClose를 우선 사용 (chartPreviousClose는
+    // range 시작일 기준이라 부정확할 수 있음).
+    let prevClose =
+      meta.regularMarketPreviousClose ??
+      meta.previousClose ??
+      meta.chartPreviousClose ??
+      null;
+
+    // 종목명
+    const name =
+      meta.longName || meta.shortName || meta.symbol || symbol;
+
     res.setHeader("Cache-Control", "s-maxage=20, stale-while-revalidate=40");
-    res.status(200).json({ symbol, price, prevClose });
+    res.status(200).json({ symbol, name, price, prevClose });
   } catch (e) {
     res.status(502).json({ error: String(e) });
   }
