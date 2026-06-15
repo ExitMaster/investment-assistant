@@ -94,34 +94,45 @@ export default function Dashboard({ profile, flash }) {
           </span>
         </h2>
 
+        {/* 컬럼 헤더 */}
+        <div className="board-head">
+          <span>종목</span>
+          <span style={{ textAlign: "right" }}>현재가</span>
+          <span style={{ textAlign: "right" }}>전고점 대비</span>
+        </div>
+
         {boardSyms.map(({ sym, role }) => {
           const q = quotes[sym];
           const ath = athMap[sym]?.ath ?? null;
           const price = q?.price ?? null;
-          // ATH 대비 등락 (없으면 전일종가 대비)
+          // ATH 있으면 전고점 대비, 없으면 전일 대비
+          const usingAth = ath != null;
           const base = ath ?? q?.prevClose ?? null;
           const change = price != null ? pct(price, base) : null;
           const isDown = change != null && change < 0;
-          const nearBuy = change != null && change <= -(settings.drawdown_levels?.[0] ?? 10) + 1;
+          const nearBuy = usingAth && change != null && change <= -(settings.drawdown_levels?.[0] ?? 10) + 1;
+          const name = q?.name && q.name !== sym ? q.name : null;
 
           return (
             <div className={`ticker-row ${nearBuy ? "alert" : ""}`} key={sym + role}>
               <div>
                 <span className="t-sym">{sym}</span>
                 <span className="chip">{role}</span>
+                {name && <div className="t-name">{name}</div>}
                 <div className="t-sub">
-                  {ath ? `ATH ${ath.toFixed(2)}` : q?.prevClose ? `전일 ${q.prevClose.toFixed(2)}` : "기준 없음"}
+                  {usingAth ? `ATH ${ath.toFixed(2)}` : q?.prevClose ? `전일 ${q.prevClose.toFixed(2)}` : "기준 없음"}
                 </div>
               </div>
               <div className="t-price mono">{price != null ? price.toFixed(2) : "—"}</div>
               <div className={`t-chg mono ${change == null ? "" : isDown ? "down" : "up"}`}>
                 {change == null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
+                {!usingAth && change != null && <div className="t-basis">전일 대비</div>}
               </div>
             </div>
           );
         })}
         <p className="hint" style={{ marginTop: 10, fontSize: 12, color: "var(--text-faint)" }}>
-          현재가는 30초마다 갱신됩니다. ATH가 비어 있으면 엔진이 처음 실행될 때 채워집니다.
+          현재가는 30초마다 갱신됩니다. 전고점(ATH)은 엔진이 계산해 채웁니다. 아직 ATH가 없는 종목은 전일 종가 대비로 표시됩니다.
         </p>
       </div>
 
