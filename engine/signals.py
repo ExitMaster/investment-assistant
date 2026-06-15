@@ -7,18 +7,31 @@ from indicators import AthRatchet, wilder_dmi, stochastics_slow, volume_spike, d
 
 def build_ath_from_history(closes, reset_pct=10.0):
     """
-    종가 시리즈 전체를 순회하여 현재 시점의 ATH ratchet 상태를 만든다.
-    엔진 최초 실행 시, 또는 저장된 상태가 없을 때 사용.
-    반환: AthRatchet 인스턴스 (마지막 시점 상태)
+    과거 종가 시리즈로부터 '현재 시점의 ATH 기준선'을 구축한다.
+
+    ratchet의 본래 규칙(ATH 아래로 내려갈 때만 갱신)을 히스토리 전체에
+    그대로 적용하면, 상승만 한 구간에서 ATH가 첫 종가에 고정되는 문제가 있다.
+    초기화의 올바른 정의는 "현재까지의 종가 최고점"을 기준선으로 삼는 것이다.
+    이후 실시간 운영에서 ratchet(쌍봉 방지, +reset% 후 하향 시 갱신)이 동작한다.
+
+    따라서:
+      - 기준선 ATH = 시리즈의 종가 최고값
+      - running_high = 마지막 종가 (이후 신고가 추적 시작점)
+      - exceeded_threshold = 마지막 종가가 이미 ATH+reset% 위인지
+    반환: AthRatchet 인스턴스
     """
-    closes = list(closes)
+    closes = [float(c) for c in closes if c is not None]
     if not closes:
         return None
-    # 초기 ATH는 첫 종가로 시작하되, 시리즈 진행하며 ratchet 자연 형성
-    ath = AthRatchet(closes[0], reset_pct=reset_pct)
-    for c in closes:
-        ath.update(float(c))
-    return ath
+
+    peak = max(closes)            # 현재까지의 최고 종가 = 초기 ATH 기준선
+    last = closes[-1]             # 현재가(마지막 종가)
+
+    obj = AthRatchet(peak, reset_pct=reset_pct)
+    # 마지막 종가가 최고점보다 높을 일은 없지만(peak가 max), 안전하게 running 설정
+    obj.running_high = last
+    obj.exceeded_threshold = last >= peak * (1 + reset_pct / 100.0)
+    return obj
 
 
 def deepest_level(drawdown_pct, levels):
