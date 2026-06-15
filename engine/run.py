@@ -135,11 +135,12 @@ def run_intraday():
                 level_last_alert[str(cur_deep)] = now_iso()
 
         # --- ATH 초과 매도 (선택) ---
+        # 매도 상태는 정수 배열(active_levels) 대신 JSON(level_last_alert)에 기록.
         if st.get("enable_sell_signals", True):
             hit, gain = evaluate_sell_levels(price, obj)
             if hit:
                 sell_key = f"sell_{hit}"
-                if sell_key not in active_levels:
+                if sell_key not in level_last_alert:
                     msg = notify.format_sell(ticker, hit, price, obj.ath, gain)
                     if notify.send_message(chat, msg):
                         db.insert_alert({
@@ -147,7 +148,7 @@ def run_intraday():
                             "level": f"+{hit}%", "message": msg,
                             "price": price, "ath": obj.ath,
                         })
-                    active_levels.append(sell_key)
+                    level_last_alert[sell_key] = now_iso()
 
         save_ath(uid, ticker, obj, baseline_level, active_levels, level_last_alert, day)
         print(f"  {ticker}: px={price:.2f} dd={dd:+.1f}% newly={newly}")
