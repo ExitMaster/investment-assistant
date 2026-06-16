@@ -131,7 +131,10 @@ export default function Backtest({ profile }) {
       })));
       candleRef.current = candle;
 
-      const athLine = chart.addLineSeries({ color: "#eab308", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+      const athLine = chart.addLineSeries({
+        color: "#eab308", lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+        lineStyle: lc.LineStyle ? lc.LineStyle.Dotted : 1,
+      });
       athLine.setData(data.time.map((t, i) => ({ time: t, value: result.athSeries[i] })));
 
       candle.setMarkers(markersFor(result.events, enabledRef.current));
@@ -187,6 +190,10 @@ export default function Backtest({ profile }) {
   }, [visibleEvents]);
 
   const tname = tickers.find((t) => t.ticker === ticker)?.name;
+  const isKR = /^\d{6}/.test(ticker);
+  const fmtP = (v) =>
+    v == null ? "" : isKR ? Math.round(v).toLocaleString("ko-KR")
+      : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   return (
     <div className="bt-screen">
@@ -257,6 +264,7 @@ export default function Backtest({ profile }) {
                 <div className="bt-event" key={i}>
                   <span className="bt-ev-date">{e.time}</span>
                   <span className="bt-ev-badge" style={{ background: s.color }}>{e.label}</span>
+                  <span className="bt-ev-price mono">{fmtP(e.price)}</span>
                   <span className="bt-ev-reason">{e.reason}</span>
                 </div>
               );

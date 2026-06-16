@@ -5,6 +5,7 @@
 yfinance를 기본 소스로 사용. (GitHub Actions 환경에서는 정상 작동)
 """
 import time
+from datetime import timezone
 import pandas as pd
 
 try:
@@ -58,6 +59,32 @@ def get_current_price(ticker):
             print(f"[data] {ticker} price attempt {attempt+1} failed: {e}")
             time.sleep(2)
     return None
+
+
+def get_current_quote(ticker):
+    """(현재가, 최신 틱 시각 UTC) 반환. 시각을 못 얻으면 (가격, None).
+    휴장/장외 판별(신선도 가드)에 사용한다."""
+    for attempt in range(3):
+        try:
+            t = yf.Ticker(ticker)
+            df = t.history(period="1d", interval="1m")
+            if len(df):
+                price = float(df["Close"].iloc[-1])
+                ts = df.index[-1].to_pydatetime()
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                else:
+                    ts = ts.astimezone(timezone.utc)
+                return price, ts
+            fi = getattr(t, "fast_info", None)
+            if fi:
+                px = fi.get("last_price") or fi.get("lastPrice")
+                if px:
+                    return float(px), None
+        except Exception as e:
+            print(f"[data] {ticker} quote attempt {attempt+1} failed: {e}")
+            time.sleep(2)
+    return None, None
 
 
 def get_daily_closes_for_ath(ticker, lookback):

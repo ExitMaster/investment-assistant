@@ -587,7 +587,7 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; 
 .bt-summary b { font-size: 15px; }
 .bt-events { display: flex; flex-direction: column; gap: 1px; }
 .bt-event {
-  display: grid; grid-template-columns: 86px auto 1fr; gap: 8px;
+  display: grid; grid-template-columns: 86px auto auto 1fr; gap: 8px;
   align-items: center; padding: 8px 4px;
   border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px;
 }
@@ -596,9 +596,10 @@ hr.divider { border: none; border-top: 1px solid var(--border); margin: 14px 0; 
   justify-self: start; color: #fff; font-size: 11px; font-weight: 600;
   padding: 2px 7px; border-radius: 6px; white-space: nowrap;
 }
+.bt-ev-price { color: var(--text, #e6edf3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bt-ev-reason { color: var(--text, #e6edf3); }
 @media (max-width: 480px) {
-  .bt-event { grid-template-columns: 72px auto; }
+  .bt-event { grid-template-columns: 72px auto 1fr; }
   .bt-ev-reason { grid-column: 1 / -1; color: var(--muted, #9aa4b2); }
 }
 

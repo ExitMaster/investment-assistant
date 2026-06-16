@@ -19,7 +19,7 @@ from signals import (
     evaluate_indicators, deepest_level,
 )
 from data_source import (
-    get_current_price, get_daily_closes_for_ath, get_daily_history,
+    get_current_price, get_current_quote, get_daily_closes_for_ath, get_daily_history,
 )
 
 ET  = timezone(timedelta(hours=-4))   # 간이 ET (서머타임은 워크플로 스케줄에서 관리)
@@ -173,9 +173,16 @@ def run_intraday():
             ticker = row["ticker"]
             name = row.get("name")
             ticker_actions = row.get("buy_actions")
-            price = get_current_price(ticker)
+            price, tick_ts = get_current_quote(ticker)
             if price is None:
                 print(f"  {ticker}: no price"); continue
+
+            # 휴장/장외 신선도 가드: 최신 틱이 '오늘(해당 시장)'이 아니면 판정 건너뜀
+            if tick_ts is not None:
+                mtz = KST if _is_kr(ticker) else ET
+                if tick_ts.astimezone(mtz).date() != datetime.now(mtz).date():
+                    print(f"  {ticker}: stale tick {tick_ts.astimezone(mtz)} — 휴장/장외 skip")
+                    continue
 
             obj, saved = get_or_build_ath(uid, ticker, st.get("ath_lookback", "5y"), reset_pct)
             if obj is None:
@@ -243,7 +250,7 @@ def run_intraday():
                 newly, cur_deep, dd = evaluate_buy_levels(
                     price, obj, levels, baseline_level, active_levels)
 
-            # 임박(선행) 알림: 다음 매수레벨에 prealert_pp 이내로 근접 시 1회
+            # 임박(선행) 알림: ATH 신호가 다음 매수/매도 레벨에 prealert_pp 이내로 근접 시 1회
             if prealert_enabled and buy_enabled:
                 dd_abs = dd  # 양수 하락 깊이
                 for L in sorted(levels):
@@ -260,6 +267,26 @@ def run_intraday():
                                 db.insert_alert({
                                     "user_id": uid, "ticker": ticker, "kind": "prealert",
                                     "level": f"-{L}%임박", "message": msg, "price": price, "ath": obj.ath,
+                                })
+                            level_last_alert[key] = now_iso()
+                        break
+
+            if prealert_enabled and sell_enabled:
+                gain_now = obj.gain_pct(price)
+                for L in sorted(SELL_LEVELS):
+                    if f"sell_{L}" in level_last_alert:   # 이미 도달·알림된 매도 레벨 제외
+                        continue
+                    gap = L - gain_now
+                    if 0 < gap <= prealert_pp:
+                        key = f"near_sell_{L}"
+                        if key not in level_last_alert:
+                            msg = notify.format_prealert_sell(
+                                ticker, L, price, obj.ath, gain_now, gap, name=name)
+                            if notify.send_message(chat, msg):
+                                db.insert_alert({
+                                    "user_id": uid, "ticker": ticker, "kind": "prealert",
+                                    "level": (f"+{L}%임박" if L > 0 else "ATH도달임박"),
+                                    "message": msg, "price": price, "ath": obj.ath,
                                 })
                             level_last_alert[key] = now_iso()
                         break

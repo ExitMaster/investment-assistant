@@ -98,6 +98,19 @@ def format_prealert(ticker, level, price, ath, dd, gap, name=None, action=None):
     )
 
 
+def format_prealert_sell(ticker, level, price, ath, gain, gap, name=None):
+    """다음 매도레벨 임박 예고. gap: 레벨까지 남은 %p(양수)."""
+    disp = _ticker_display(ticker, name)
+    p = _fmt_price(price, ticker)
+    a = _fmt_price(ath, ticker)
+    target = "ATH 도달" if level == 0 else f"+{level}%"
+    return (
+        f"⏳ <b>{disp} 매도레벨 임박</b>\n"
+        f"{target}까지 +{gap:.1f}%p 남음 (현재 {gain:+.1f}%)\n"
+        f"현재가 {p}  |  ATH {a}"
+    )
+
+
 def format_sell(ticker, level, price, ath, gain, name=None, cash_target=None):
     disp = _ticker_display(ticker, name)
     p = _fmt_price(price, ticker)
