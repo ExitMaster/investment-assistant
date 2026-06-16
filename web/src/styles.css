@@ -213,12 +213,23 @@ input, select {
 /* ── 티커 행 ── */
 .ticker-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 8px 12px;
+  grid-template-columns: 18px 1fr auto auto;
+  gap: 8px 10px;
   align-items: center;
   padding: 10px 0;
   border-top: 1px solid var(--border);
 }
+.drag-handle {
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-faint);
+  cursor: grab;
+  touch-action: none;
+  padding: 4px 2px;
+  border-radius: 4px;
+  transition: color 0.15s;
+  user-select: none;
+}
+.drag-handle:hover { color: var(--text-dim); background: var(--bg-elev); }
 .t-info { min-width: 0; }
 .t-sym {
   font-weight: 700; font-size: 14px;

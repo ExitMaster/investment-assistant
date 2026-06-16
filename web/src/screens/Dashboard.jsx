@@ -59,7 +59,104 @@ const GearIcon = () => (
   </svg>
 );
 
-/* ── 지수 전광판 기본 심볼 ── */
+const GripIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <circle cx="9" cy="6" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="6" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="9" cy="18" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="18" r="1" fill="currentColor" stroke="none"/>
+  </svg>
+);
+
+/* ── 드래그 정렬 훅 (데스크톱 + 모바일 long-press) ── */
+function useDragSort(externalItems, onCommit) {
+  const [list, setList] = useState(externalItems);
+  const [activeIdx, setActiveIdx] = useState(null);
+  const [overIdx, setOverIdx] = useState(null);
+  const containerRef = useRef(null);
+  const timer = useRef(null);
+  const onCommitRef = useRef(onCommit);
+  const drag = useRef({ active: false, from: null, over: null, list: externalItems });
+
+  useEffect(() => { onCommitRef.current = onCommit; }, [onCommit]);
+
+  useEffect(() => {
+    drag.current.list = externalItems;
+    setList(externalItems);
+  }, [externalItems]);
+
+  function rowProps(idx) {
+    return {
+      draggable: true,
+      "data-row-idx": String(idx),
+      onDragStart: () => { drag.current.from = idx; setActiveIdx(idx); },
+      onDragOver: (e) => { e.preventDefault(); if (idx !== drag.current.from) { drag.current.over = idx; setOverIdx(idx); } },
+      onDrop: (e) => {
+        e.preventDefault();
+        const { from, over, list: lst } = drag.current;
+        if (from != null && over != null && from !== over) {
+          const next = [...lst]; const [x] = next.splice(from, 1); next.splice(over, 0, x);
+          drag.current.list = next; setList(next); onCommitRef.current?.(next);
+        }
+        drag.current.from = null; drag.current.over = null; setActiveIdx(null); setOverIdx(null);
+      },
+      onDragEnd: () => { drag.current.from = null; drag.current.over = null; setActiveIdx(null); setOverIdx(null); },
+    };
+  }
+
+  function handleProps(idx) {
+    return {
+      onTouchStart: () => {
+        drag.current.from = null; drag.current.active = false;
+        timer.current = setTimeout(() => {
+          drag.current = { ...drag.current, active: true, from: idx, over: idx };
+          setActiveIdx(idx);
+          try { navigator.vibrate(40); } catch {}
+        }, 500);
+      },
+    };
+  }
+
+  useEffect(() => {
+    function onMove(e) {
+      clearTimeout(timer.current);
+      if (!drag.current.active) return;
+      e.preventDefault();
+      const y = e.touches[0].clientY;
+      containerRef.current?.querySelectorAll("[data-row-idx]").forEach(row => {
+        const r = row.getBoundingClientRect();
+        if (y >= r.top && y <= r.bottom) {
+          const i = +row.dataset.rowIdx;
+          if (i !== drag.current.over) { drag.current.over = i; setOverIdx(i); }
+        }
+      });
+    }
+    function onEnd() {
+      clearTimeout(timer.current);
+      const { active, from, over, list: lst } = drag.current;
+      if (active && from != null && over != null && from !== over) {
+        const next = [...lst]; const [x] = next.splice(from, 1); next.splice(over, 0, x);
+        drag.current.list = next; setList(next); onCommitRef.current?.(next);
+      }
+      drag.current.active = false; drag.current.from = null; drag.current.over = null;
+      setActiveIdx(null); setOverIdx(null);
+    }
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onEnd);
+    document.addEventListener("touchcancel", onEnd);
+    return () => {
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", onEnd);
+    };
+  }, []);
+
+  return { list, containerRef, activeIdx, overIdx, rowProps, handleProps };
+}
+
+
 const DEFAULT_MARQUEE = [
   { symbol: "^IXIC",    label: "NASDAQ" },
   { symbol: "^GSPC",    label: "S&P500" },
@@ -321,7 +418,7 @@ function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
 }
 
 /* ── 티커 한 행 ── */
-function TickerRow({ sym, quotes, athMap, onRemove }) {
+function TickerRow({ sym, quotes, athMap, onRemove, dragRowProps, dragHandleProps, isDragging, isDragOver }) {
   const q = quotes[sym];
   const athRow = athMap[sym];
   const ath = athRow?.ath ?? null;
@@ -335,7 +432,15 @@ function TickerRow({ sym, quotes, athMap, onRemove }) {
   const dsym = displaySym(sym);
 
   return (
-    <div className="ticker-row">
+    <div
+      className="ticker-row"
+      style={{ opacity: isDragging ? 0.35 : 1, background: isDragOver ? "var(--bg-elev)" : undefined, borderRadius: isDragOver ? 6 : undefined }}
+      {...(dragRowProps ?? {})}
+    >
+      <div className="drag-handle" title="길게 눌러 순서 변경" {...(dragHandleProps ?? {})}>
+        <GripIcon />
+      </div>
+
       <div className="t-info">
         <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{dsym}</a>
         {name && <div className="t-name">{name}</div>}
@@ -374,13 +479,14 @@ function TickerRow({ sym, quotes, athMap, onRemove }) {
 function SectionCard({
   title, note,
   tickers, quotes, athMap,
-  onRemove, onRefreshAll,
+  onRemove, onRefreshAll, onReorder,
   onAdd, addDisabled, addLabel,
   adding, onCancelAdd, onSelectAdd,
   searchPlaceholder, searchHint,
 }) {
   const [showNote, setShowNote] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const { list, containerRef, activeIdx, overIdx, rowProps, handleProps } = useDragSort(tickers, onReorder);
 
   async function handleRefreshAll() {
     if (!onRefreshAll || refreshing) return;
@@ -438,15 +544,21 @@ function SectionCard({
         </p>
       )}
 
-      {tickers.map((sym) => (
-        <TickerRow
-          key={sym}
-          sym={sym}
-          quotes={quotes}
-          athMap={athMap}
-          onRemove={onRemove}
-        />
-      ))}
+      <div ref={containerRef}>
+        {list.map((sym, idx) => (
+          <TickerRow
+            key={sym}
+            sym={sym}
+            quotes={quotes}
+            athMap={athMap}
+            onRemove={onRemove}
+            dragRowProps={onReorder ? rowProps(idx) : undefined}
+            dragHandleProps={onReorder ? handleProps(idx) : undefined}
+            isDragging={activeIdx === idx}
+            isDragOver={overIdx === idx && activeIdx !== idx}
+          />
+        ))}
+      </div>
 
       {adding && (
         <div style={{ marginTop: 12 }}>
@@ -481,9 +593,9 @@ export default function Dashboard({ profile, flash }) {
     const [{ data: st }, { data: ix }, { data: ind }, { data: wl }, { data: aths }] =
       await Promise.all([
         supabase.from("settings").select("*").eq("user_id", uid).single(),
-        supabase.from("index_tickers").select("ticker,name").eq("user_id", uid),
-        supabase.from("indicator_tickers").select("ticker,name").eq("user_id", uid),
-        supabase.from("watchlist").select("ticker,name").eq("user_id", uid),
+        supabase.from("index_tickers").select("ticker,name").eq("user_id", uid).order("sort_order"),
+        supabase.from("indicator_tickers").select("ticker,name").eq("user_id", uid).order("sort_order"),
+        supabase.from("watchlist").select("ticker,name").eq("user_id", uid).order("sort_order"),
         supabase.from("ath_state").select("*").eq("user_id", uid),
       ]);
     setSettings(st);
@@ -547,6 +659,13 @@ export default function Dashboard({ profile, flash }) {
       const data = await res.json();
       setAthMap((prev) => ({ ...prev, [ticker]: { ...prev[ticker], ...data } }));
     } catch {}
+  }
+
+  /* sort_order DB 저장 */
+  async function saveOrder(table, newSymbols) {
+    await Promise.all(newSymbols.map((sym, i) =>
+      supabase.from(table).update({ sort_order: i }).eq("user_id", uid).eq("ticker", sym)
+    ));
   }
 
   /* 섹션 새로고침: ATH 재계산 + 현재가 갱신 */
@@ -639,6 +758,7 @@ export default function Dashboard({ profile, flash }) {
         athMap={athMap}
         onRemove={removeIndexTicker}
         onRefreshAll={initAthAll}
+        onReorder={(syms) => { setIndexTickers(syms); saveOrder("index_tickers", syms); }}
         onAdd={() => setAddingTo("ath")}
         addDisabled={indexTickers.length >= 10}
         addLabel={`${indexTickers.length}/10`}
@@ -658,6 +778,7 @@ export default function Dashboard({ profile, flash }) {
         athMap={athMap}
         onRemove={removeIndicatorTicker}
         onRefreshAll={initAthAll}
+        onReorder={(syms) => { setIndicatorTickers(syms); saveOrder("indicator_tickers", syms); }}
         onAdd={() => setAddingTo("indicator")}
         addDisabled={indicatorTickers.length >= 50}
         addLabel={`${indicatorTickers.length}/50`}
@@ -677,6 +798,7 @@ export default function Dashboard({ profile, flash }) {
         athMap={athMap}
         onRemove={removeWatchTicker}
         onRefreshAll={initAthAll}
+        onReorder={(syms) => { setWatchlist(syms); saveOrder("watchlist", syms); }}
         onAdd={() => setAddingTo("watchlist")}
         addDisabled={watchlist.length >= 50}
         addLabel={`${watchlist.length}/50`}
