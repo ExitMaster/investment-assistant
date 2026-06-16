@@ -15,7 +15,25 @@ function tvLink(sym) {
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(sym)}`;
 }
 function isKR(sym) { return /^\d{6}/.test((sym || "").split(".")[0]); }
-function displaySym(sym) { return sym.replace(/\.(KS|KQ)$/, ""); }
+
+// 대표 지수 티커 → 친숙한 이름
+const INDEX_NAMES = {
+  "^KS11": "KOSPI",
+  "^KQ11": "KOSDAQ",
+  "^KS200": "KOSPI 200",
+  "^IXIC": "NASDAQ",
+  "^NDX": "NASDAQ 100",
+  "^GSPC": "S&P 500",
+  "^DJI": "다우존스",
+  "^RUT": "러셀 2000",
+  "^VIX": "VIX",
+  "^SOX": "필라델피아 반도체",
+  "USDKRW=X": "달러/원",
+};
+function displaySym(sym) {
+  if (INDEX_NAMES[sym]) return INDEX_NAMES[sym];
+  return sym.replace(/\.(KS|KQ)$/, "");
+}
 function fmtPrice(v, sym, showCurrency = false) {
   if (v == null) return null;
   const kr = isKR(sym);
