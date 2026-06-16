@@ -32,6 +32,13 @@ const EditIcon = () => (
     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
   </svg>
 );
+const InfoIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="8" x2="12" y2="12" />
+    <line x1="12" y1="16" x2="12.01" y2="16" />
+  </svg>
+);
 
 /* ── 자동완성 검색 인풋 ── */
 function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
@@ -100,14 +107,11 @@ function TickerRow({ sym, quotes, athMap, onRemove, onEdit }) {
   return (
     <div className="ticker-row">
       <div className="t-info">
-        <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{sym}</a>
+        <div className="t-top-row">
+          <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{sym}</a>
+          {price != null && <span className="t-price mono">{price.toFixed(2)}</span>}
+        </div>
         {name && <div className="t-name">{name}</div>}
-        {price != null && (
-          <div className="t-current">
-            <span className="t-current-label">현재가</span>
-            <span className="t-current-price mono">{price.toFixed(2)}</span>
-          </div>
-        )}
       </div>
 
       <div className="t-data">
@@ -150,12 +154,22 @@ function SectionCard({
   adding, onCancelAdd, onSelectAdd,
   searchPlaceholder, searchHint,
 }) {
+  const [showNote, setShowNote] = useState(false);
   return (
     <div className="card">
       <div className="section-header">
-        <div>
-          <h2 style={{ marginBottom: 2 }}>{title}</h2>
-          {note && <p className="hint" style={{ margin: 0 }}>{note}</p>}
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <h2 style={{ marginBottom: 0 }}>{title}</h2>
+          {note && (
+            <button
+              className="icon-btn-sm"
+              onClick={() => setShowNote((v) => !v)}
+              title="설명"
+              style={{ color: showNote ? "var(--accent)" : undefined }}
+            >
+              <InfoIcon />
+            </button>
+          )}
         </div>
         {onAdd && (
           <button
@@ -170,6 +184,7 @@ function SectionCard({
           </button>
         )}
       </div>
+      {showNote && note && <p className="hint section-note">{note}</p>}
 
       {tickers.length === 0 && !adding && (
         <p className="muted" style={{ marginTop: 12, fontSize: 14 }}>
@@ -367,7 +382,7 @@ export default function Dashboard({ profile, flash }) {
 
       {/* ② 기술적 매수신호 알림 */}
       <SectionCard
-        title="기술적 매수신호 알림"
+        title="기술적 매수∙매도신호 알림"
         note="DMI·스토캐스틱·거래량 기준, 장시작/마감 특정 시점 판정 · 매도 신호: ATH 대비 +10% / +20% …"
         tickers={indicatorTickers}
         quotes={quotes}

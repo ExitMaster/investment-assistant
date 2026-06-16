@@ -222,7 +222,7 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
         <h2>알림 켜기/끄기</h2>
         {[
           ["enable_buy_levels",    "ATH 대비 하락율 알림",      "ATH 대비 −N% 하락 시 매수 신호"],
-          ["enable_buy_indicators","기술적 매수신호 알림",      "DMI·스토캐스틱·거래량 기준 매수 신호"],
+          ["enable_buy_indicators","기술적 매수∙매도신호 알림",  "DMI·스토캐스틱·거래량 기준 매수∙매도 신호"],
           ["enable_sell_signals",  "매도 신호 알림",            "ATH 대비 +10%/+20%… 상승 시 매도 신호"],
           ["enable_watchlist",     "국내주식 DMI 매수신호 알림","개별 종목 DMI 매수신호 감시"],
         ].map(([key, label, desc]) => (
