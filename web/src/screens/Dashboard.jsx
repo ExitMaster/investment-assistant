@@ -465,8 +465,94 @@ function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
   );
 }
 
+const ChevronIcon = ({ open }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }}>
+    <polyline points="6 9 12 15 18 9" />
+  </svg>
+);
+
+/* ── 상태 게이지 (ATH 대비 위치 시각화, 동적 윈도우) ── */
+function buildGaugeWindow(c, buyLevels) {
+  const maxBuy = Math.max(...buyLevels);
+  let lo = Math.floor(c / 10) * 10;
+  let hi = lo + 10;
+  if (Math.abs(c) < 10) { lo = -20; hi = 20; }       // ATH 부근: 대칭
+  else if (c < 0) { hi = Math.max(hi, 10); lo = lo - 10; }  // 하락: 반대(위)는 +10까지, 현재쪽 1눈금 더
+  else { lo = Math.min(lo, -10); hi = hi + 10; }     // 상승: 반대(아래)는 -10까지, 현재쪽 1눈금 더
+  lo = Math.max(lo, -maxBuy);   // 매수쪽은 가장 깊은 레벨에서 멈춤
+  lo = Math.min(lo, -10);       // ATH ±10 은 항상 노출
+  hi = Math.max(hi, 10);
+  const marks = [];
+  for (let v = lo; v <= hi + 0.001; v += 10) marks.push(Math.round(v));
+  return { lo, hi, marks };
+}
+
+function computeGauge(price, ath, buyLevels) {
+  if (price == null || ath == null || ath <= 0) return null;
+  const c = ((price - ath) / ath) * 100;
+  const { lo, hi, marks } = buildGaugeWindow(c, buyLevels);
+  const span = hi - lo || 1;
+  const posOf = (v) => ((Math.min(Math.max(v, lo), hi) - lo) / span) * 100;
+
+  let caption, capDir;
+  if (c < 0) {
+    const negs = buyLevels.map((L) => -L).sort((a, b) => b - a);   // -10,-20,…
+    const deeper = negs.filter((L) => L < c - 0.001);
+    if (deeper.length) {
+      const next = deeper[0];
+      const dist = c - next;   // 더 떨어져야 할 폭(양수)
+      caption = `다음 매수 ${next}% · ${(-dist).toFixed(1)}%p`;
+    } else {
+      caption = "최대 매수레벨 도달";
+    }
+    capDir = "down";
+  } else {
+    const next = Math.floor(c / 10) * 10 + 10;
+    const dist = next - c;
+    caption = `다음 매도 +${next}% · +${dist.toFixed(1)}%p`;
+    capDir = "up";
+  }
+  return { c, lo, hi, marks, posOf, caption, capDir };
+}
+
+function StatusGauge({ price, ath, sym, buyLevels }) {
+  const g = computeGauge(price, ath, buyLevels);
+  if (!g) return <div className="gauge-empty">ATH 계산 중…</div>;
+  const markerLeft = g.posOf(g.c);
+  const zeroLeft = g.posOf(0);
+  const fillColor = g.c < 0 ? "var(--down)" : "var(--up)";
+  return (
+    <div className="gauge">
+      <div className="gauge-head">
+        <span className="gauge-side">매수</span>
+        <span className="gauge-ath">ATH {fmtPrice(ath, sym)}</span>
+        <span className="gauge-side">매도</span>
+      </div>
+      <div className="gauge-track">
+        <div className="gauge-fill" style={{
+          left: `${Math.min(zeroLeft, markerLeft)}%`,
+          width: `${Math.abs(markerLeft - zeroLeft)}%`,
+          background: fillColor,
+        }} />
+        {g.marks.map((m) => (
+          <div key={m} className={`gauge-tick ${m === 0 ? "ath" : ""}`} style={{ left: `${g.posOf(m)}%` }}>
+            <span className="gauge-tick-label">{m === 0 ? "ATH" : m > 0 ? `+${m}` : m}</span>
+          </div>
+        ))}
+        <div className="gauge-marker" style={{ left: `${markerLeft}%`, color: fillColor }}>▲</div>
+      </div>
+      <div className="gauge-foot">
+        <span className="gauge-cur">현재 {fmtPrice(price, sym, true)} ({g.c >= 0 ? "+" : ""}{g.c.toFixed(1)}%)</span>
+        <span className="gauge-cap" style={{ color: g.capDir === "down" ? "var(--down)" : "var(--up)" }}>{g.caption}</span>
+      </div>
+    </div>
+  );
+}
+
 /* ── 티커 한 행 ── */
-function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDragging, isDragOver }) {
+function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDragging, isDragOver,
+                    showGauge, expanded, onToggle, buyLevels }) {
   const q = quotes[sym];
   const athRow = athMap[sym];
   const ath = athRow?.ath ?? null;
@@ -478,58 +564,74 @@ function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDr
 
   const priceClass = dayChg == null ? "neutral" : dayChg >= 0 ? "up" : "down";
   const dsym = displaySym(sym);
+  const canExpand = showGauge && !editMode && onToggle;
 
   return (
-    <div
-      className="ticker-row"
-      style={{
-        gridTemplateColumns: editMode ? "18px 1fr auto auto" : "1fr auto",
-        opacity: isDragging ? 0.3 : 1,
-        borderTop: isDragOver ? "2px solid var(--accent)" : undefined,
-        marginTop: isDragOver ? -1 : undefined,
-        transition: "opacity 0.15s",
-        cursor: editMode ? "grab" : "default",
-        userSelect: editMode ? "none" : undefined,
-      }}
-      {...(dragRowProps ?? {})}
-    >
-      {editMode && (
-        <div className="drag-handle" title="드래그하여 순서 변경">
-          <GripIcon />
-        </div>
-      )}
-
-      <div className="t-info">
-        <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{dsym}</a>
-        {name && <div className="t-name">{name}</div>}
-      </div>
-
-      <div className="t-data">
-        <div className="t-price-row">
-          {price != null && (
-            <span className={`t-price mono ${priceClass}`}>{fmtPrice(price, sym, true)}</span>
-          )}
-          {dayChg != null && (
-            <span className={`badge ${priceClass}`}>{fmtPct(dayChg)}</span>
-          )}
-        </div>
-        {ath != null && (
-          <div className="t-ath-row">
-            <span className="t-ath-label">ATH</span>
-            <span className="t-ath-price mono">{fmtPrice(ath, sym)}</span>
-            {athChg != null && (
-              <span className={`badge ${athChg >= 0 ? "up" : "down"}`} style={{ fontSize: 10 }}>{fmtPct(athChg)}</span>
-            )}
+    <>
+      <div
+        className="ticker-row"
+        style={{
+          gridTemplateColumns: editMode ? "18px 1fr auto auto" : "1fr auto auto",
+          opacity: isDragging ? 0.3 : 1,
+          borderTop: isDragOver ? "2px solid var(--accent)" : undefined,
+          marginTop: isDragOver ? -1 : undefined,
+          transition: "opacity 0.15s",
+          cursor: editMode ? "grab" : canExpand ? "pointer" : "default",
+          userSelect: editMode ? "none" : undefined,
+        }}
+        {...(dragRowProps ?? {})}
+        onClick={canExpand ? () => onToggle(sym) : undefined}
+      >
+        {editMode && (
+          <div className="drag-handle" title="드래그하여 순서 변경">
+            <GripIcon />
           </div>
         )}
+
+        <div className="t-info">
+          <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer"
+             onClick={(e) => e.stopPropagation()}>{dsym}</a>
+          {name && <div className="t-name">{name}</div>}
+        </div>
+
+        <div className="t-data">
+          <div className="t-price-row">
+            {price != null && (
+              <span className={`t-price mono ${priceClass}`}>{fmtPrice(price, sym, true)}</span>
+            )}
+            {dayChg != null && (
+              <span className={`badge ${priceClass}`}>{fmtPct(dayChg)}</span>
+            )}
+          </div>
+          {ath != null && (
+            <div className="t-ath-row">
+              <span className="t-ath-label">ATH</span>
+              <span className="t-ath-price mono">{fmtPrice(ath, sym)}</span>
+              {athChg != null && (
+                <span className={`badge ${athChg >= 0 ? "up" : "down"}`} style={{ fontSize: 10 }}>{fmtPct(athChg)}</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="t-actions">
+          {editMode && onRemove && (
+            <button className="icon-btn-sm danger" onClick={(e) => { e.stopPropagation(); onRemove(sym); }} title="삭제"><XIcon /></button>
+          )}
+          {canExpand && (
+            <span className="t-chevron" style={{ color: expanded ? "var(--accent)" : "var(--text-faint)" }}>
+              <ChevronIcon open={expanded} />
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="t-actions">
-        {editMode && onRemove && (
-          <button className="icon-btn-sm danger" onClick={() => onRemove(sym)} title="삭제"><XIcon /></button>
-        )}
-      </div>
-    </div>
+      {showGauge && expanded && !editMode && (
+        <div className="gauge-row">
+          <StatusGauge price={price} ath={ath} sym={sym} buyLevels={buyLevels} />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -541,11 +643,21 @@ function SectionCard({
   onAdd, addDisabled, addLabel,
   adding, onCancelAdd, onSelectAdd,
   searchPlaceholder, searchHint,
+  withGauge, buyLevels,
 }) {
   const [showNote, setShowNote] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [expanded, setExpanded] = useState(() => new Set());
   const { list, containerRef, activeIdx, overIdx, rowProps } = useDragSort(tickers, onReorder, editMode);
+
+  function toggleExpand(sym) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(sym) ? next.delete(sym) : next.add(sym);
+      return next;
+    });
+  }
 
   async function handleRefreshAll() {
     if (!onRefreshAll || refreshing) return;
@@ -630,6 +742,10 @@ function SectionCard({
             dragRowProps={editMode && onReorder ? rowProps(idx) : { "data-row-idx": String(idx) }}
             isDragging={editMode && activeIdx === idx}
             isDragOver={editMode && overIdx === idx && activeIdx !== idx}
+            showGauge={withGauge}
+            expanded={expanded.has(sym)}
+            onToggle={toggleExpand}
+            buyLevels={buyLevels}
           />
         ))}
       </div>
@@ -841,6 +957,8 @@ export default function Dashboard({ profile, flash }) {
         onSelectAdd={addIndexTicker}
         searchPlaceholder="예: QQQ, SPY, 069500"
         searchHint="ATH 대비 하락율∙매도 신호를 계산할 지수 티커. 최대 10개."
+        withGauge
+        buyLevels={settings?.drawdown_levels ?? [10, 20, 30, 40]}
       />
 
       {/* ② 기술적 매수∙매도신호 알림 */}
