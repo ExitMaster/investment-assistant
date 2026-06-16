@@ -1,19 +1,18 @@
 // Vercel Serverless: POST /api/init-ath
 // 티커 추가 시 즉시 ATH ratchet 계산 → ath_state upsert
 
-function buildRatchet(closes, resetPct = 10) {
-  let ath = closes[0], runningHigh = closes[0], exceeded = false;
-  for (const c of closes) {
-    if (c > runningHigh) {
-      runningHigh = c;
-      if (runningHigh >= ath * (1 + resetPct / 100)) exceeded = true;
-    }
-    if (c < ath && exceeded) {
-      ath = runningHigh;
-      exceeded = false;
-    }
-  }
-  return { ath, running_high: runningHigh, exceeded_threshold: exceeded };
+// Python engine의 build_ath_from_history와 동일한 로직:
+// 기간 내 최고가를 ATH 기준으로 삼음 (ratchet 전체 적용 시 상승장에서 ATH 고정 버그 방지)
+function buildAthFromHistory(closes, resetPct = 10) {
+  const valid = closes.filter((c) => c != null && c > 0);
+  if (!valid.length) return null;
+  const ath = Math.max(...valid);
+  const last = valid[valid.length - 1];
+  return {
+    ath,
+    running_high: last,
+    exceeded_threshold: last >= ath * (1 + resetPct / 100),
+  };
 }
 
 const RANGE_MAP = {
@@ -61,8 +60,8 @@ export default async function handler(req, res) {
   if (!closes || closes.length === 0)
     return res.status(404).json({ error: "no history for " + ticker });
 
-  // 3. ATH ratchet 계산
-  const ratchet = buildRatchet(closes, Number(resetPct));
+  // 3. ATH 계산 (기간 내 최고가 기준)
+  const ratchet = buildAthFromHistory(closes, Number(resetPct));
 
   // 4. ath_state upsert (user JWT → RLS 통과)
   const upsertRes = await fetch(`${SUPABASE_URL}/rest/v1/ath_state`, {

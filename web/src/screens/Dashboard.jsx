@@ -43,6 +43,13 @@ const InfoIcon = () => (
     <line x1="12" y1="16" x2="12.01" y2="16" />
   </svg>
 );
+const RefreshIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="23 4 23 10 17 10" />
+    <polyline points="1 20 1 14 7 14" />
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+  </svg>
+);
 const GearIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
@@ -61,11 +68,12 @@ const DEFAULT_MARQUEE = [
 ];
 
 /* ── 전광판 ── */
-function MarqueeTape({ uid }) {
+export function MarqueeTape({ uid }) {
   const [items, setItems] = useState([]);        // { symbol, label, enabled }
   const [prices, setPrices] = useState({});
   const [showPanel, setShowPanel] = useState(false);
   const [addSym, setAddSym] = useState("");
+  const [dragIdx, setDragIdx] = useState(null);
   const timer = useRef(null);
 
   // DB에서 marquee_tickers 로드 (없으면 기본값 삽입)
@@ -135,6 +143,24 @@ function MarqueeTape({ uid }) {
       .delete().eq("user_id", uid).eq("symbol", symbol);
   }
 
+  function onDragStart(idx) { setDragIdx(idx); }
+  function onDragOver(e, idx) {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === idx) return;
+    const next = [...items];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(idx, 0, moved);
+    setItems(next);
+    setDragIdx(idx);
+  }
+  async function onDragEnd() {
+    setDragIdx(null);
+    await Promise.all(items.map((item, i) =>
+      supabase.from("marquee_tickers").update({ sort_order: i })
+        .eq("user_id", uid).eq("symbol", item.symbol)
+    ));
+  }
+
   const visible = items.filter((i) => i.enabled);
 
   return (
@@ -179,11 +205,22 @@ function MarqueeTape({ uid }) {
       </div>
 
       {showPanel && (
-        <div className="marquee-panel">
-          <p className="marquee-panel-title">지수 전광판 설정</p>
-          {items.map((item) => (
-            <div key={item.symbol} className="marquee-toggle-row">
-              <span>{item.label || item.symbol}</span>
+        <div className="marquee-panel-wrap"><div className="marquee-panel">
+          <p className="marquee-panel-title">지수 전광판 설정 · 드래그로 순서 변경</p>
+          {items.map((item, i) => (
+            <div
+              key={item.symbol}
+              className="marquee-toggle-row"
+              draggable
+              onDragStart={() => onDragStart(i)}
+              onDragOver={(e) => onDragOver(e, i)}
+              onDragEnd={onDragEnd}
+              style={{ cursor: "grab", opacity: dragIdx === i ? 0.4 : 1 }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ color: "var(--text-faint)", fontSize: 14, lineHeight: 1 }}>⠿</span>
+                {item.label || item.symbol}
+              </span>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <label className="switch" style={{ width: 36, height: 20 }}>
                   <input
@@ -211,7 +248,7 @@ function MarqueeTape({ uid }) {
             />
             <button className="btn-ghost" style={{ fontSize: 12 }} onClick={addCustom}>추가</button>
           </div>
-        </div>
+        </div></div>
       )}
     </>
   );
@@ -270,7 +307,7 @@ function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
 }
 
 /* ── 티커 한 행 ── */
-function TickerRow({ sym, quotes, athMap, onRemove }) {
+function TickerRow({ sym, quotes, athMap, onRemove, onRefreshAth }) {
   const q = quotes[sym];
   const athRow = athMap[sym];
   const ath = athRow?.ath ?? null;
@@ -311,6 +348,9 @@ function TickerRow({ sym, quotes, athMap, onRemove }) {
       </div>
 
       <div className="t-actions">
+        {onRefreshAth && (
+          <button className="icon-btn-sm" onClick={() => onRefreshAth(sym)} title="ATH 재계산"><RefreshIcon /></button>
+        )}
         {onRemove && (
           <button className="icon-btn-sm danger" onClick={() => onRemove(sym)} title="삭제"><XIcon /></button>
         )}
@@ -323,7 +363,7 @@ function TickerRow({ sym, quotes, athMap, onRemove }) {
 function SectionCard({
   title, note,
   tickers, quotes, athMap,
-  onRemove,
+  onRemove, onRefreshAth,
   onAdd, addDisabled, addLabel,
   adding, onCancelAdd, onSelectAdd,
   searchPlaceholder, searchHint,
@@ -373,6 +413,7 @@ function SectionCard({
           quotes={quotes}
           athMap={athMap}
           onRemove={onRemove}
+          onRefreshAth={onRefreshAth}
         />
       ))}
 
@@ -548,21 +589,17 @@ export default function Dashboard({ profile, flash }) {
 
   return (
     <>
-      {/* 지수 전광판 */}
-      <MarqueeTape uid={uid} />
-
-      <div style={{ height: 12 }} />
-
       {/* ① ATH 대비 하락율∙매도 알림 */}
       <SectionCard
         title="ATH 대비 하락율∙매도 알림"
         note={`ATH 대비 설정된 % 하락 시 텔레그램 알림 · 매수 신호: ATH 대비 −${
-          (settings?.drawdown_levels ?? [10, 20, 30]).join(" / −")
+          (settings?.drawdown_levels ?? [10, 20, 30, 40]).join(" / −")
         }% · 매도 알림: ATH 도달 및 ATH 대비 매 10% 초과 상승 시.`}
         tickers={indexTickers}
         quotes={quotes}
         athMap={athMap}
         onRemove={removeIndexTicker}
+        onRefreshAth={initAth}
         onAdd={() => setAddingTo("ath")}
         addDisabled={indexTickers.length >= 5}
         addLabel={`${indexTickers.length}/5`}
