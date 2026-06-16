@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { supabase, TELEGRAM_BOT_USERNAME } from "../supabase.js";
+import { supabase } from "../supabase.js";
 
 /* ── ATH 산정 기간 슬라이더 변환 ── */
 function lookbackToSlider(v) {
@@ -22,10 +22,10 @@ function sliderToTime(v) {
   return { anchor: "close", offset_min: 360 - v };
 }
 function sliderTimeLabel(v) {
-  if (v === 0) return "장시작 바로";
-  if (v <= 180) return `장시작 후 ${v}분`;
-  if (v === 360) return "장마감 바로";
-  return `장마감 전 ${360 - v}분`;
+  if (v === 0) return "개장 바로";
+  if (v <= 180) return `개장 후 ${v}분`;
+  if (v === 360) return "마감 바로";
+  return `마감 전 ${360 - v}분`;
 }
 
 /* ── 시각 행 (단일 슬라이더) ── */
@@ -38,8 +38,8 @@ function TimeRow({ t, i, onUpdate, onDelete }) {
         <button className="icon-btn-sm danger" onClick={() => onDelete(i)} title="삭제">×</button>
       </div>
       <div className="time-slider-labels" style={{ marginTop: 8 }}>
-        <span>장시작</span>
-        <span>장마감</span>
+        <span>개장</span>
+        <span>마감</span>
       </div>
       <input
         type="range"
@@ -179,10 +179,9 @@ function PerTickerActions({ indexTickers, tickerActions, setTickerActions, level
 
 export default function Settings({ profile, flash, onTelegramLinked }) {
   const [s, setS] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const [unlinking, setUnlinking] = useState(false);
   const [indexTickers, setIndexTickers] = useState([]);
   const [tickerActions, setTickerActions] = useState({});
+  const saveTimer = useRef(null);
 
   useEffect(() => {
     (async () => {
@@ -215,128 +214,94 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
 
   if (!s) return <div className="card"><p className="muted">설정 불러오는 중…</p></div>;
 
-  const up = (patch) => setS({ ...s, ...patch });
-
-  async function save() {
-    setSaving(true);
-    const { user_id, updated_at, display_ticker, ...payload } = s;
-    const { error } = await supabase
-      .from("settings")
-      .update({ ...payload, updated_at: new Date().toISOString() })
-      .eq("user_id", profile.id);
-    // 지표별 매매 행동 저장
-    await Promise.all(
-      Object.entries(tickerActions)
-        .filter(([, act]) => act && typeof act === "object")
-        .map(([tk, act]) =>
-          supabase.from("index_tickers").update({ buy_actions: act })
-            .eq("user_id", profile.id).eq("ticker", tk)
-        )
+  // 완전 자동저장: 변경 즉시 디바운스로 DB 반영 (저장 버튼 없음)
+  function persistSettings(nextS) {
+    document.documentElement.setAttribute(
+      "data-color-inverted", nextS.color_inverted ? "true" : "false"
     );
-    setSaving(false);
-    if (!error) {
-      document.documentElement.setAttribute(
-        "data-color-inverted",
-        s.color_inverted ? "true" : "false"
-      );
-    }
-    flash(error ? "저장 실패: " + error.message : "설정을 저장했습니다");
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      const { user_id, updated_at, display_ticker, ...payload } = nextS;
+      await supabase.from("settings")
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq("user_id", profile.id);
+    }, 500);
+  }
+  function up(patch) {
+    const next = { ...s, ...patch };
+    setS(next);
+    persistSettings(next);
   }
 
-  async function unlinkTelegram() {
-    setUnlinking(true);
-    await supabase.from("profiles").update({
-      telegram_chat_id: null,
-      telegram_linked: false,
-      telegram_display_name: null,
-    }).eq("id", profile.id);
-    setUnlinking(false);
-    flash("텔레그램 연결을 해제했습니다");
-    if (onTelegramLinked) onTelegramLinked();
+  // 지표별 매매 행동도 변경 즉시 저장
+  function changeActions(updater) {
+    setTickerActions((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      Object.entries(next)
+        .filter(([, act]) => act && typeof act === "object")
+        .forEach(([tk, act]) =>
+          supabase.from("index_tickers").update({ buy_actions: act })
+            .eq("user_id", profile.id).eq("ticker", tk)
+        );
+      return next;
+    });
+  }
+
+  // 매매 행동 가이드 기본값 복원
+  function resetActions() {
+    if (mode === "common") {
+      const def = {};
+      levels.forEach((L) => { def[L] = defAction(L); });
+      up({ buy_actions: def });
+    } else {
+      const def = {};
+      indexTickers.forEach((t) => {
+        const m = {};
+        levels.forEach((L) => { m[L] = defAction(L); });
+        def[t.ticker] = m;
+      });
+      changeActions(def);
+    }
+    flash("매매 행동 가이드를 기본값으로 되돌렸습니다");
   }
 
   const times = Array.isArray(s.indicator_alert_times) ? s.indicator_alert_times : [];
   const levels = Array.isArray(s.drawdown_levels) ? s.drawdown_levels : [10, 20, 30];
   const mode = s.action_mode === "per_ticker" ? "per_ticker" : "common";
   const lookbackSlider = lookbackToSlider(s.ath_lookback);
-  const tgLink = TELEGRAM_BOT_USERNAME
-    ? `https://t.me/${TELEGRAM_BOT_USERNAME}?start=${profile.id}`
-    : null;
 
   return (
     <>
-      {/* ① 알림 채널 & 알림 켜기/끄기 */}
+      {/* ① 표시 설정 */}
       <div className="card">
-        <h2>알림 설정</h2>
-
-        {/* 텔레그램 */}
-        <div style={{ marginBottom: 14 }}>
-          {profile.telegram_linked ? (
-            <div className="tg-connected">
-              <div className="tg-name">
-                <span className="tg-dot" />
-                텔레그램 연결됨
-                {profile.telegram_display_name && (
-                  <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>
-                    ({profile.telegram_display_name})
-                  </span>
-                )}
-              </div>
-              <button
-                className="btn-danger"
-                style={{ fontSize: 12, padding: "5px 10px" }}
-                onClick={unlinkTelegram}
-                disabled={unlinking}
-              >
-                {unlinking ? "해제 중…" : "연결 끊기"}
-              </button>
-            </div>
-          ) : tgLink ? (
-            <div>
-              <p className="muted" style={{ margin: "0 0 10px", fontSize: 13 }}>
-                아래 버튼을 눌러 봇과 대화를 시작하면 알림이 연결됩니다.
-              </p>
-              <a
-                className="btn-primary"
-                href={tgLink}
-                target="_blank"
-                rel="noreferrer"
-                style={{ textDecoration: "none", display: "inline-block", fontSize: 13 }}
-              >
-                텔레그램 봇 연결하기
-              </a>
-              <p className="hint" style={{ marginTop: 6 }}>
-                연결 후 이 페이지를 새로고침하면 상태가 갱신됩니다.
-              </p>
-            </div>
-          ) : (
-            <p className="muted" style={{ fontSize: 13 }}>
-              봇 주소가 설정되지 않았습니다. 관리자에게 문의하세요.
-            </p>
-          )}
-        </div>
-
-        <hr className="divider" />
+        <h2>표시 설정</h2>
 
         <p className="hint" style={{ marginTop: 0 }}>
           각 신호의 켜기/끄기는 대시보드 각 패널의 🔔 종 아이콘에서 설정합니다.
-          (탭: 전체 켜기/끄기 · 길게 누르기: 세부 설정)
+          (탭: 전체 켜기/끄기 · 길게 누르기: 세부 설정) · 텔레그램 연결은 알림 탭에 있습니다.
         </p>
 
-        {/* 색상 반전 */}
-        <div className="toggle-row">
-          <div>
-            <div className="toggle-label">색상 반전</div>
-            <div className="toggle-desc">상승=빨강, 하락=초록으로 표시 (저장 시 적용)</div>
+        {/* 색상 표시 방식 — 직관적 토글 */}
+        <div className="field">
+          <label>등락 색상</label>
+          <div className="color-toggle">
+            <button
+              className={!s.color_inverted ? "active" : ""}
+              onClick={() => up({ color_inverted: false })}
+            >
+              <span style={{ color: "#16a34a" }}>▲ 상승</span>
+              <span style={{ color: "#ef4444" }}>▼ 하락</span>
+              <small>기본</small>
+            </button>
+            <button
+              className={s.color_inverted ? "active" : ""}
+              onClick={() => up({ color_inverted: true })}
+            >
+              <span style={{ color: "#ef4444" }}>▲ 상승</span>
+              <span style={{ color: "#16a34a" }}>▼ 하락</span>
+              <small>반전</small>
+            </button>
           </div>
-          <label className="switch">
-            <input
-              type="checkbox"
-              checked={!!s.color_inverted}
-              onChange={(e) => up({ color_inverted: e.target.checked })}
-            />
-            <span />
-          </label>
         </div>
       </div>
 
@@ -371,9 +336,7 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
             />
           </div>
           <div className="hint">
-            어떤 고점에서 이 % 이상 눌림(하락)이 나오면 그 고점을 ATH로 확정합니다(위로만 갱신).
-            이보다 작은 눌림과 재상승이 반복되는 상승장에서는 직전 확정 고점이 ATH로 유지되어,
-            ATH 대비 +10/20/30%에서 매도 신호가 발생합니다 (쌍봉·노이즈 방지).
+            어떤 고점에서 이 % 이상 눌림이 나와야 그 고점을 ATH로 확정합니다(위로만 갱신·쌍봉/노이즈 방지).
           </div>
         </div>
 
@@ -407,18 +370,31 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
           </div>
         </div>
 
-        <div className="hint" style={{ padding: "8px 10px", background: "var(--bg-elev)", borderRadius: 6, marginTop: 4 }}>
-          매도 알림: ATH 도달 시 + ATH 대비 매 10% 초과 상승 시.
-          ATH 대비 하락율∙매도 알림 분류에 등록된 티커가 대상입니다.
-        </div>
       </div>
 
       {/* ②-b 매매 행동 가이드 */}
       <div className="card">
-        <h2>매매 행동 가이드</h2>
-        <p className="hint" style={{ marginTop: 0 }}>
+        <div className="section-header">
+          <h2 style={{ marginBottom: 0 }}>매매 행동 가이드</h2>
+          <button className="btn-ghost" style={{ fontSize: 12 }} onClick={resetActions}>
+            기본값 복원
+          </button>
+        </div>
+        <p className="hint" style={{ marginTop: 6 }}>
           매수·매도 알림에 '무엇을 얼마나' 함께 표시합니다 (참고용 안내).
         </p>
+
+        <div className="toggle-row" style={{ marginTop: 0 }}>
+          <div>
+            <div className="toggle-label">알림에 행동 가이드 포함</div>
+            <div className="toggle-desc">끄면 신호만 보내고 종목·현금비중 안내는 생략합니다.</div>
+          </div>
+          <label className="switch">
+            <input type="checkbox" checked={s.include_action_guide !== false}
+              onChange={(e) => up({ include_action_guide: e.target.checked })} />
+            <span />
+          </label>
+        </div>
 
         <div className="mode-toggle">
           <button className={mode === "common" ? "active" : ""} onClick={() => up({ action_mode: "common" })}>
@@ -437,7 +413,7 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
           <PerTickerActions
             indexTickers={indexTickers}
             tickerActions={tickerActions}
-            setTickerActions={setTickerActions}
+            setTickerActions={changeActions}
             levels={levels}
           />
         )}
@@ -454,7 +430,7 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
         <div className="toggle-row">
           <div>
             <div className="toggle-label">임박 알림</div>
-            <div className="toggle-desc">다음 매수레벨에 근접하면 미리 1회 알림</div>
+            <div className="toggle-desc">ATH 신호가 다음 매수 또는 매도레벨에 설정한 %p로 근접하면 미리 1회 알림</div>
           </div>
           <label className="switch">
             <input type="checkbox" checked={!!s.prealert_enabled}
@@ -467,7 +443,6 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
             <label>임박 기준 (%p 이내)</label>
             <input type="number" step="0.5" min="0.5" value={s.prealert_pp ?? 2.0}
               onChange={(e) => up({ prealert_pp: parseFloat(e.target.value) })} style={{ width: 80 }} />
-            <div className="hint">현재 하락율이 다음 레벨까지 이 %p 이내로 근접하면 예고 알림.</div>
           </div>
         )}
       </div>
@@ -500,14 +475,9 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
         </button>
       </div>
 
-      <button
-        className="btn-primary"
-        onClick={save}
-        disabled={saving}
-        style={{ width: "100%", padding: 13, marginTop: 4 }}
-      >
-        {saving ? "저장 중…" : "설정 저장"}
-      </button>
+      <p className="hint" style={{ textAlign: "center", marginTop: 4, fontSize: 11 }}>
+        변경사항은 자동으로 저장됩니다.
+      </p>
     </>
   );
 }

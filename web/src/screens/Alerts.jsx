@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { supabase } from "../supabase.js";
+import { supabase, TELEGRAM_BOT_USERNAME } from "../supabase.js";
 
 function tvLink(sym) {
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(sym)}`;
@@ -25,19 +25,21 @@ const PRESETS = [
   { label: "24시간", min: 1440 },
 ];
 
+// 남은 시간 표기: 시=h, 분=m, 초=s (예: "2h 30m", "30m 12s")
 function fmtRemain(ms) {
   const total = Math.max(0, Math.round(ms / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
-  if (h > 0) return `${h}시간 ${m}분`;
-  if (m > 0) return `${m}분 ${s}초`;
-  return `${s}초`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
-/* ── 알림 일시중지 ── */
+/* ── 알림 차단 (마스터 토글 + 일시중지 타이머) ── */
 function MutePanel({ uid }) {
   const [mutedUntil, setMutedUntil] = useState(null);  // Date | null
+  const [masterOff, setMasterOff] = useState(false);   // 마스터 차단 (무기한)
   const [now, setNow] = useState(Date.now());
   const [showPicker, setShowPicker] = useState(false);
   const longPressed = useRef(false);
@@ -46,8 +48,9 @@ function MutePanel({ uid }) {
   useEffect(() => {
     (async () => {
       const { data } = await supabase
-        .from("settings").select("muted_until").eq("user_id", uid).single();
+        .from("settings").select("muted_until,alerts_master_off").eq("user_id", uid).single();
       if (data?.muted_until) setMutedUntil(new Date(data.muted_until));
+      setMasterOff(!!data?.alerts_master_off);
     })();
   }, [uid]);
 
@@ -63,6 +66,12 @@ function MutePanel({ uid }) {
     setMutedUntil(until);
     await supabase.from("settings")
       .update({ muted_until: until ? until.toISOString() : null })
+      .eq("user_id", uid);
+  }
+  async function saveMaster(v) {
+    setMasterOff(v);
+    await supabase.from("settings")
+      .update({ alerts_master_off: v })
       .eq("user_id", uid);
   }
 
@@ -81,6 +90,7 @@ function MutePanel({ uid }) {
 
   // 탭 = +30분, 롱프레스 = 시간선택
   function startPress() {
+    if (masterOff) return;
     longPressed.current = false;
     timer.current = setTimeout(() => {
       longPressed.current = true;
@@ -89,6 +99,7 @@ function MutePanel({ uid }) {
     }, 450);
   }
   function endPress() {
+    if (masterOff) return;
     clearTimeout(timer.current);
     if (!longPressed.current) addMinutes(30);  // 탭
   }
@@ -96,9 +107,25 @@ function MutePanel({ uid }) {
 
   return (
     <div className="card" style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      {/* 마스터 차단 토글 */}
+      <div className="toggle-row" style={{ marginTop: 0 }}>
+        <div>
+          <div className="toggle-label">알림 전체 차단</div>
+          <div className="toggle-desc">켜면 모든 텔레그램 알림이 무기한 차단됩니다(타이머와 별개).</div>
+        </div>
+        <label className="switch">
+          <input type="checkbox" checked={masterOff} onChange={(e) => saveMaster(e.target.checked)} />
+          <span />
+        </label>
+      </div>
+
+      <hr className="divider" />
+
+      {/* 일시중지 타이머 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, opacity: masterOff ? 0.4 : 1 }}>
         <button
           className="mute-bell"
+          disabled={masterOff}
           onMouseDown={startPress}
           onMouseUp={endPress}
           onMouseLeave={cancelPress}
@@ -108,39 +135,41 @@ function MutePanel({ uid }) {
           style={{
             background: isMuted ? "var(--down-bg)" : "var(--bg-elev)",
             color: isMuted ? "var(--down)" : "var(--text-dim)",
+            cursor: masterOff ? "not-allowed" : "pointer",
           }}
         >
-          <BellIcon off={isMuted} />
+          <BellIcon off={isMuted || masterOff} />
         </button>
 
         <div style={{ flex: 1, minWidth: 0 }}>
           {isMuted ? (
             <>
-              <div style={{ fontWeight: 600, color: "var(--down)" }}>
-                알림 중지 중 · {fmtRemain(mutedUntil.getTime() - now)} 남음
+              <div style={{ fontWeight: 600, color: "var(--down)" }}>알림 중지 중</div>
+              <div style={{ fontWeight: 600, color: "var(--down)", fontFamily: "var(--mono)" }}>
+                {fmtRemain(mutedUntil.getTime() - now)} 남음
               </div>
-              <div className="hint" style={{ fontSize: 11, marginTop: 2 }}>
-                탭 +30분 · 롱프레스 시간선택
+              <div className="hint" style={{ fontSize: 11, marginTop: 4 }}>
+                알림차단: 탭 +30분 · 길게 눌러 시간선택
               </div>
             </>
           ) : (
             <>
               <div style={{ fontWeight: 600 }}>알림 켜짐</div>
               <div className="hint" style={{ fontSize: 11, marginTop: 2 }}>
-                탭 +30분 · 롱프레스 시간선택
+                알림차단: 탭 +30분 · 길게 눌러 시간선택
               </div>
             </>
           )}
         </div>
 
-        {isMuted && (
+        {isMuted && !masterOff && (
           <button className="btn-ghost" style={{ fontSize: 13 }} onClick={clearMute}>
             해제
           </button>
         )}
       </div>
 
-      {showPicker && (
+      {showPicker && !masterOff && (
         <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
           {PRESETS.map((p) => (
             <button
@@ -165,7 +194,72 @@ function MutePanel({ uid }) {
   );
 }
 
-export default function Alerts({ profile }) {
+/* ── 텔레그램 연결 (소형, 페이지 하단) ── */
+function TelegramSection({ profile, onTelegramLinked }) {
+  const [unlinking, setUnlinking] = useState(false);
+  const tgLink = TELEGRAM_BOT_USERNAME
+    ? `https://t.me/${TELEGRAM_BOT_USERNAME}?start=${profile.id}`
+    : null;
+
+  async function unlinkTelegram() {
+    setUnlinking(true);
+    await supabase.from("profiles").update({
+      telegram_chat_id: null,
+      telegram_linked: false,
+      telegram_display_name: null,
+    }).eq("id", profile.id);
+    setUnlinking(false);
+    if (onTelegramLinked) onTelegramLinked();
+  }
+
+  return (
+    <div className="card tg-section-sm">
+      <h3 style={{ margin: "0 0 10px", fontSize: 14 }}>텔레그램 연결</h3>
+      {profile.telegram_linked ? (
+        <div className="tg-connected">
+          <div className="tg-name" style={{ fontSize: 13 }}>
+            <span className="tg-dot" />
+            연결됨
+            {profile.telegram_display_name && (
+              <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>
+                ({profile.telegram_display_name})
+              </span>
+            )}
+          </div>
+          <button
+            className="btn-danger"
+            style={{ fontSize: 12, padding: "5px 10px" }}
+            onClick={unlinkTelegram}
+            disabled={unlinking}
+          >
+            {unlinking ? "해제 중…" : "연결 끊기"}
+          </button>
+        </div>
+      ) : tgLink ? (
+        <div>
+          <p className="muted" style={{ margin: "0 0 8px", fontSize: 12 }}>
+            봇과 대화를 시작하면 알림이 연결됩니다. 연결 후 새로고침하세요.
+          </p>
+          <a
+            className="btn-primary"
+            href={tgLink}
+            target="_blank"
+            rel="noreferrer"
+            style={{ textDecoration: "none", display: "inline-block", fontSize: 13 }}
+          >
+            텔레그램 봇 연결하기
+          </a>
+        </div>
+      ) : (
+        <p className="muted" style={{ fontSize: 12 }}>
+          봇 주소가 설정되지 않았습니다. 관리자에게 문의하세요.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function Alerts({ profile, onTelegramLinked }) {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -208,6 +302,8 @@ export default function Alerts({ profile }) {
           ))
         )}
       </div>
+
+      <TelegramSection profile={profile} onTelegramLinked={onTelegramLinked} />
     </>
   );
 }

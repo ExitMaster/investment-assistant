@@ -41,7 +41,10 @@ DEFAULT_BUY_ACTIONS = {
 
 
 def resolve_action(level, st, ticker_actions):
-    """레벨별 매매 행동 조회. 우선순위: 지표별 모드의 티커 설정 → 공통 설정 → PDF 기본값."""
+    """레벨별 매매 행동 조회. 우선순위: 지표별 모드의 티커 설정 → 공통 설정 → PDF 기본값.
+    include_action_guide 가 False면 행동 가이드를 표시하지 않음(None)."""
+    if st.get("include_action_guide") is False:
+        return None
     src = None
     if st.get("action_mode") == "per_ticker" and ticker_actions:
         src = ticker_actions
@@ -59,7 +62,9 @@ def _is_kr(ticker):
 
 
 def is_muted(st):
-    """settings.muted_until 가 현재보다 미래면 알림 일시중지 상태."""
+    """알림 차단 상태 판정: 마스터 차단(alerts_master_off) 또는 일시중지(muted_until)."""
+    if st.get("alerts_master_off"):
+        return True
     mu = st.get("muted_until")
     if not mu:
         return False
@@ -163,7 +168,7 @@ def run_intraday():
         repeat = int(st.get("redrawdown_repeat_interval", 30))
         buy_enabled = st.get("enable_buy_levels", True)
         sell_enabled = st.get("enable_sell_signals", True)
-        sell_cash_target = st.get("sell_cash_target", 30)
+        sell_cash_target = None if st.get("include_action_guide") is False else st.get("sell_cash_target", 30)
         prealert_enabled = bool(st.get("prealert_enabled", False))
         prealert_pp = float(st.get("prealert_pp", 2.0) or 2.0)
 

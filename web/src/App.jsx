@@ -174,7 +174,9 @@ export default function App() {
           <Dashboard profile={profile} flash={flash} />
         )}
         {screen === "backtest" && <Backtest profile={profile} />}
-        {screen === "alerts" && <Alerts profile={profile} />}
+        {screen === "alerts" && (
+          <Alerts profile={profile} onTelegramLinked={loadProfile} />
+        )}
         {screen === "settings" && (
           <Settings
             profile={profile}
