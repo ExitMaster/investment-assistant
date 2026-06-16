@@ -90,6 +90,13 @@ const GearIcon = () => (
   </svg>
 );
 
+const KebabIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <circle cx="12" cy="5" r="1.6" />
+    <circle cx="12" cy="12" r="1.6" />
+    <circle cx="12" cy="19" r="1.6" />
+  </svg>
+);
 const GripIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <circle cx="9" cy="6" r="1" fill="currentColor" stroke="none"/>
@@ -233,8 +240,11 @@ export function MarqueeTape({ uid }) {
   const [prices, setPrices] = useState({});
   const [showPanel, setShowPanel] = useState(false);
   const [addSym, setAddSym] = useState("");
+  const [results, setResults] = useState([]);
+  const [busy, setBusy] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const timer = useRef(null);
+  const searchTimer = useRef(null);
 
   // DB에서 marquee_tickers 로드 (없으면 기본값 삽입)
   useEffect(() => {
@@ -285,16 +295,29 @@ export function MarqueeTape({ uid }) {
       .eq("user_id", uid).eq("symbol", symbol);
   }
 
-  async function addCustom() {
-    const sym = addSym.trim().toUpperCase();
-    if (!sym || items.find((i) => i.symbol === sym)) { setAddSym(""); return; }
-    const newItem = { symbol: sym, label: sym, enabled: true };
+  async function addSymbol(rawSym, label) {
+    const sym = (rawSym || "").trim().toUpperCase();
+    if (!sym || items.find((i) => i.symbol === sym)) { setAddSym(""); setResults([]); return; }
+    const newItem = { symbol: sym, label: label || displaySym(sym), enabled: true };
     const next = [...items, newItem];
     setItems(next);
     setAddSym("");
+    setResults([]);
     await supabase.from("marquee_tickers").insert({
       user_id: uid, symbol: sym, enabled: true, sort_order: next.length - 1,
     });
+  }
+  function addCustom() { addSymbol(addSym); }
+  function onAddChange(e) {
+    const v = e.target.value;
+    setAddSym(v);
+    clearTimeout(searchTimer.current);
+    if (!v.trim()) { setResults([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setBusy(true);
+      setResults(await searchTickers(v));
+      setBusy(false);
+    }, 300);
   }
 
   async function removeItem(symbol) {
@@ -371,7 +394,7 @@ export function MarqueeTape({ uid }) {
             title="전광판 설정"
             style={{ color: showPanel ? "var(--accent)" : undefined }}
           >
-            <GearIcon />
+            <KebabIcon />
           </button>
         </div>
       </div>
@@ -410,15 +433,29 @@ export function MarqueeTape({ uid }) {
               </div>
             </div>
           ))}
-          <div className="row-inline" style={{ marginTop: 10 }}>
-            <input
-              value={addSym}
-              onChange={(e) => setAddSym(e.target.value)}
-              placeholder="심볼 추가 (예: BTC-USD)"
-              style={{ flex: 1, fontSize: 13 }}
-              onKeyDown={(e) => e.key === "Enter" && addCustom()}
-            />
-            <button className="btn-ghost" style={{ fontSize: 12 }} onClick={addCustom}>추가</button>
+          <div className="row-inline" style={{ marginTop: 10, alignItems: "flex-start" }}>
+            <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+              <input
+                value={addSym}
+                onChange={onAddChange}
+                placeholder="심볼·종목명 검색"
+                style={{ width: "100%", fontSize: 13 }}
+                onKeyDown={(e) => e.key === "Enter" && addCustom()}
+              />
+              {(results.length > 0 || busy) && (
+                <div className="search-dropdown">
+                  {busy && <div className="search-item muted">검색 중…</div>}
+                  {results.map((r) => (
+                    <button key={r.symbol} className="search-item"
+                      onClick={() => addSymbol(r.symbol, displaySym(r.symbol))}>
+                      <span style={{ fontWeight: 600, fontSize: 13 }}>{displaySym(r.symbol)}</span>
+                      <span style={{ color: "var(--text-dim)", fontSize: 12, marginLeft: 6 }}>{r.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="btn-ghost" style={{ fontSize: 12, whiteSpace: "nowrap" }} onClick={addCustom}>추가</button>
           </div>
         </div>
       )}

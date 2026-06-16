@@ -134,20 +134,6 @@ export default function App() {
             >
               <BellIcon />
             </button>
-            <button
-              className={`icon-btn ${screen === "settings" ? "active" : ""}`}
-              onClick={() => setScreen("settings")}
-              title="설정"
-            >
-              <GearIcon />
-            </button>
-            <button
-              className="icon-btn"
-              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-              title={theme === "dark" ? "밝은 모드로 전환" : "다크 모드로 전환"}
-            >
-              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-            </button>
             {isAdmin && (
               <button
                 className={`icon-btn ${screen === "admin" ? "active" : ""}`}
@@ -163,6 +149,20 @@ export default function App() {
               title="로그아웃"
             >
               <LogoutIcon />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+              title={theme === "dark" ? "밝은 모드로 전환" : "다크 모드로 전환"}
+            >
+              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+            </button>
+            <button
+              className={`icon-btn ${screen === "settings" ? "active" : ""}`}
+              onClick={() => setScreen("settings")}
+              title="설정"
+            >
+              <GearIcon />
             </button>
           </div>
         </div>
