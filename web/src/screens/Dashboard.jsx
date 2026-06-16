@@ -488,36 +488,40 @@ function buildGaugeWindow(c, buyLevels) {
   return { lo, hi, marks };
 }
 
-function computeGauge(price, ath, buyLevels) {
+function computeGauge(price, ath, prevClose, buyLevels) {
   if (price == null || ath == null || ath <= 0) return null;
   const c = ((price - ath) / ath) * 100;
   const { lo, hi, marks } = buildGaugeWindow(c, buyLevels);
   const span = hi - lo || 1;
   const posOf = (v) => ((Math.min(Math.max(v, lo), hi) - lo) / span) * 100;
+  // 남은 거리는 직전 장마감 종가 기준(증권사 등락률과 동일 기준)으로 계산
+  const base = prevClose && prevClose > 0 ? prevClose : price;
 
   let caption, capDir;
   if (c < 0) {
     const negs = buyLevels.map((L) => -L).sort((a, b) => b - a);   // -10,-20,…
     const deeper = negs.filter((L) => L < c - 0.001);
     if (deeper.length) {
-      const next = deeper[0];
-      const dist = c - next;   // 더 떨어져야 할 폭(양수)
-      caption = `다음 매수 ${next}% · ${(-dist).toFixed(1)}%p`;
+      const next = deeper[0];                       // 도달할 다음 매수레벨(ATH 대비)
+      const target = ath * (1 + next / 100);        // 그 레벨의 목표 가격
+      const distPp = ((target - price) / base) * 100;  // 직전 종가 대비 추가 등락폭
+      caption = `다음 매수 ${next}% · ${distPp >= 0 ? "+" : ""}${distPp.toFixed(1)}%p`;
     } else {
       caption = "최대 매수레벨 도달";
     }
     capDir = "down";
   } else {
     const next = Math.floor(c / 10) * 10 + 10;
-    const dist = next - c;
-    caption = `다음 매도 +${next}% · +${dist.toFixed(1)}%p`;
+    const target = ath * (1 + next / 100);
+    const distPp = ((target - price) / base) * 100;
+    caption = `다음 매도 +${next}% · +${distPp.toFixed(1)}%p`;
     capDir = "up";
   }
   return { c, lo, hi, marks, posOf, caption, capDir };
 }
 
-function StatusGauge({ price, ath, sym, buyLevels }) {
-  const g = computeGauge(price, ath, buyLevels);
+function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
+  const g = computeGauge(price, ath, prevClose, buyLevels);
   if (!g) return <div className="gauge-empty">ATH 계산 중…</div>;
   const markerLeft = g.posOf(g.c);
   const zeroLeft = g.posOf(0);
@@ -628,7 +632,7 @@ function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDr
 
       {showGauge && expanded && !editMode && (
         <div className="gauge-row">
-          <StatusGauge price={price} ath={ath} sym={sym} buyLevels={buyLevels} />
+          <StatusGauge price={price} ath={ath} prevClose={prevClose} sym={sym} buyLevels={buyLevels} />
         </div>
       )}
     </>
