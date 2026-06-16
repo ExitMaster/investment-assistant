@@ -49,6 +49,44 @@ def compute_ath_state(closes, reset_pct=10.0):
     }
 
 
+def final_regime_extremes(closes, reset_pct=10.0):
+    """현재(마지막) 확정 ATH가 활성화된 이후 겪은 (최대 하락률%, 최대 초과상승률%).
+
+    티커를 뒤늦게 등록할 때 '이미 지나간' 매수/매도 레벨을 baseline으로 억제하기 위해,
+    현재가 한 점이 아니라 이 ATH 구간의 과거 이력 전체에서 가장 깊은 하락·가장 높은
+    초과상승을 본다. 예: -12%→-15%→-9%→[등록]→-11% 라면 이미 -15%까지 갔으므로
+    최대 하락률 15%가 반환되어 -10% 매수 레벨이 억제된다.
+    반환: (max_drawdown_pct, max_gain_pct) — 둘 다 0 이상.
+    """
+    vals = [float(c) for c in closes if c is not None and float(c) > 0]
+    if not vals:
+        return 0.0, 0.0
+    r = reset_pct / 100.0
+
+    ath = None
+    peak = vals[0]
+    series = []                            # 각 봉 시점의 확정 ATH(미확정 구간은 None)
+    for c in vals:
+        if c > peak:
+            peak = c
+        if c <= peak * (1 - r):
+            ath = peak if ath is None else max(ath, peak)
+            peak = c
+        series.append(ath)
+
+    final_ath = series[-1]
+    if final_ath is None:                  # 확정 조정이 없던 예외 → 전체 구간 기준
+        final_ath = max(vals)
+        start = 0
+    else:                                  # 마지막 ATH가 처음 확정된 지점부터가 현재 구간
+        start = next(i for i, a in enumerate(series) if a == final_ath)
+
+    window = vals[start:]
+    max_dd = max(0.0, (final_ath - min(window)) / final_ath * 100.0)
+    max_gain = max(0.0, (max(window) - final_ath) / final_ath * 100.0)
+    return max_dd, max_gain
+
+
 class AthRatchet:
     """
     종가 기준 ATH 기준선 관리 (확정 고점 방식).

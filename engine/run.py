@@ -18,6 +18,7 @@ from signals import (
     build_ath_from_history, evaluate_buy_levels, evaluate_sell_levels,
     evaluate_indicators, deepest_level,
 )
+from indicators import final_regime_extremes
 from data_source import (
     get_current_price, get_current_quote, get_daily_closes_for_ath, get_daily_history,
 )
@@ -209,16 +210,20 @@ def run_intraday():
             never_evaluated = (saved is None) or (saved.get("last_trade_day") is None)
 
             if never_evaluated:
-                # 최초 평가(티커 추가 직후 포함): 이미 도달한 레벨은 알림 억제(baseline),
-                # 이후 더 깊은 레벨부터 알림 → 가입 전 하락분 스팸 방지
-                dd_now = obj.drawdown_pct(price)
-                baseline_level = deepest_level(dd_now, levels)
+                # 최초 평가(티커 추가 직후 포함): 이미 '지나간' 레벨을 baseline으로 억제.
+                # 현재가 한 점이 아니라 현재 ATH 구간의 과거 이력 전체에서 가장 깊은 하락·
+                # 가장 높은 초과상승을 기준으로 삼아야, 회복 후 등록해도 중복 알림이 안 간다.
+                hist = get_daily_closes_for_ath(ticker, st.get("ath_lookback", "5y"))
+                if hist:
+                    regime_dd, regime_gain = final_regime_extremes(hist, reset_pct)
+                else:
+                    regime_dd, regime_gain = obj.drawdown_pct(price), obj.gain_pct(price)
+                baseline_level = deepest_level(regime_dd, levels)
                 active_levels = []
                 level_last_alert = {}
-                gain_now = obj.gain_pct(price)
                 sell_baseline = -1
                 for L in sorted(SELL_LEVELS):
-                    if gain_now >= L:
+                    if regime_gain >= L:
                         sell_baseline = L
                 level_last_alert["sell_baseline"] = sell_baseline
             elif ath_advanced:
