@@ -244,8 +244,6 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
           </div>
         ))}
 
-        <hr className="divider" />
-
         {/* 색상 반전 */}
         <div className="toggle-row">
           <div>
