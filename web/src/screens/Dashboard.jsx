@@ -284,6 +284,29 @@ export default function Dashboard({ profile, flash }) {
     return () => clearInterval(id);
   }, [loading, indexTickers, indicatorTickers, watchlist, refreshQuotes]);
 
+  /* ── ATH 초기화 (티커 추가 직후 호출) ── */
+  async function initAth(ticker) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    try {
+      const res = await fetch("/api/init-ath", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          ticker,
+          resetPct: settings?.ath_reset_pct ?? 10,
+          lookback: settings?.ath_lookback ?? "5y",
+        }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setAthMap((prev) => ({ ...prev, [ticker]: { ...prev[ticker], ...data } }));
+    } catch {}
+  }
+
   /* ── ATH 감시 티커 추가/삭제 ── */
   async function addIndexTicker(item) {
     const t = item.symbol;
@@ -301,6 +324,7 @@ export default function Dashboard({ profile, flash }) {
     setAddingTo(null);
     flash(`${t} 추가됨`);
     refreshQuotes(next, indicatorTickers, watchlist);
+    initAth(t);
   }
   async function removeIndexTicker(t) {
     await supabase.from("index_tickers").delete().eq("user_id", uid).eq("ticker", t);
@@ -324,6 +348,7 @@ export default function Dashboard({ profile, flash }) {
     setAddingTo(null);
     flash(`${t} 추가됨`);
     refreshQuotes(indexTickers, next, watchlist);
+    initAth(t);
   }
   async function removeIndicatorTicker(t) {
     await supabase.from("indicator_tickers").delete().eq("user_id", uid).eq("ticker", t);
@@ -347,6 +372,7 @@ export default function Dashboard({ profile, flash }) {
     setAddingTo(null);
     flash(`${t} 추가됨`);
     refreshQuotes(indexTickers, indicatorTickers, next);
+    initAth(t);
   }
   async function removeWatchTicker(t) {
     await supabase.from("watchlist").delete().eq("user_id", uid).eq("ticker", t);
