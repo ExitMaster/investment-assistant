@@ -74,84 +74,95 @@ def run_intraday():
         uid = u["id"]
         chat = u.get("telegram_chat_id")
         st = db.get_settings(uid)
-        if not st or not st.get("enable_buy_levels", True):
+        if not st:
             continue
 
-        ticker = st["index_ticker"]
-        display = st.get("display_ticker", ticker)
+        # index_tickers 테이블 우선, 없으면 settings.index_ticker로 fallback
+        tickers = db.get_index_tickers(uid)
+        if not tickers and st.get("index_ticker"):
+            tickers = [st["index_ticker"]]
+        if not tickers:
+            continue
+
         levels = st.get("drawdown_levels", [10, 20, 30])
         reset_pct = float(st.get("ath_reset_pct", 10))
         repeat = int(st.get("redrawdown_repeat_interval", 30))
+        buy_enabled = st.get("enable_buy_levels", True)
+        sell_enabled = st.get("enable_sell_signals", True)
 
-        price = get_current_price(ticker)
-        if price is None:
-            print(f"  {ticker}: no price"); continue
+        for ticker in tickers:
+            price = get_current_price(ticker)
+            if price is None:
+                print(f"  {ticker}: no price"); continue
 
-        obj, saved = get_or_build_ath(uid, ticker, st.get("ath_lookback", "5y"), reset_pct)
-        if obj is None:
-            continue
+            obj, saved = get_or_build_ath(uid, ticker, st.get("ath_lookback", "5y"), reset_pct)
+            if obj is None:
+                continue
 
-        # 새 거래일이면 baseline 재설정
-        if not saved or saved.get("last_trade_day") != day:
-            dd_now = obj.drawdown_pct(price)
-            baseline_level = deepest_level(dd_now, levels)
-            active_levels = []
-            level_last_alert = {}
-        else:
-            baseline_level = saved.get("baseline_level", 0)
-            active_levels = list(saved.get("active_levels", []))
-            level_last_alert = dict(saved.get("level_last_alert", {}))
+            # 새 거래일이면 baseline 재설정
+            if not saved or saved.get("last_trade_day") != day:
+                dd_now = obj.drawdown_pct(price)
+                baseline_level = deepest_level(dd_now, levels)
+                active_levels = []
+                level_last_alert = {}
+            else:
+                baseline_level = saved.get("baseline_level", 0)
+                active_levels = list(saved.get("active_levels", []))
+                level_last_alert = dict(saved.get("level_last_alert", {}))
 
-        # --- 매수 레벨 신규진입 ---
-        newly, cur_deep, dd = evaluate_buy_levels(
-            price, obj, levels, baseline_level, active_levels)
-        for L in newly:
-            msg = notify.format_buy_level(ticker, display, L, price, obj.ath, -dd)
-            if notify.send_message(chat, msg):
-                db.insert_alert({
-                    "user_id": uid, "ticker": ticker, "kind": "buy_level",
-                    "level": f"-{L}%", "message": msg, "price": price, "ath": obj.ath,
-                })
-            active_levels.append(L)
-            level_last_alert[str(L)] = now_iso()
-
-        # --- 구간 유지 재알림 (당일 신규진입 레벨만, repeat>0) ---
-        if repeat > 0 and cur_deep > baseline_level and cur_deep in active_levels:
-            last = level_last_alert.get(str(cur_deep))
-            send_repeat = True
-            if last:
-                elapsed = (datetime.now(timezone.utc) -
-                           datetime.fromisoformat(last)).total_seconds() / 60
-                send_repeat = elapsed >= repeat
-            if send_repeat and cur_deep not in newly:
-                msg = notify.format_buy_level(ticker, display, cur_deep, price, obj.ath, -dd) \
-                      + f"\n(구간 유지 · {repeat}분 재알림)"
-                if notify.send_message(chat, msg):
-                    db.insert_alert({
-                        "user_id": uid, "ticker": ticker, "kind": "buy_level",
-                        "level": f"-{cur_deep}%(유지)", "message": msg,
-                        "price": price, "ath": obj.ath,
-                    })
-                level_last_alert[str(cur_deep)] = now_iso()
-
-        # --- ATH 초과 매도 (선택) ---
-        # 매도 상태는 정수 배열(active_levels) 대신 JSON(level_last_alert)에 기록.
-        if st.get("enable_sell_signals", True):
-            hit, gain = evaluate_sell_levels(price, obj)
-            if hit:
-                sell_key = f"sell_{hit}"
-                if sell_key not in level_last_alert:
-                    msg = notify.format_sell(ticker, hit, price, obj.ath, gain)
+            if buy_enabled:
+                # --- 매수 레벨 신규진입 ---
+                newly, cur_deep, dd = evaluate_buy_levels(
+                    price, obj, levels, baseline_level, active_levels)
+                for L in newly:
+                    msg = notify.format_buy_level(ticker, ticker, L, price, obj.ath, -dd)
                     if notify.send_message(chat, msg):
                         db.insert_alert({
-                            "user_id": uid, "ticker": ticker, "kind": "sell",
-                            "level": f"+{hit}%", "message": msg,
-                            "price": price, "ath": obj.ath,
+                            "user_id": uid, "ticker": ticker, "kind": "buy_level",
+                            "level": f"-{L}%", "message": msg, "price": price, "ath": obj.ath,
                         })
-                    level_last_alert[sell_key] = now_iso()
+                    active_levels.append(L)
+                    level_last_alert[str(L)] = now_iso()
 
-        save_ath(uid, ticker, obj, baseline_level, active_levels, level_last_alert, day)
-        print(f"  {ticker}: px={price:.2f} dd={dd:+.1f}% newly={newly}")
+                # --- 구간 유지 재알림 ---
+                if repeat > 0 and cur_deep > baseline_level and cur_deep in active_levels:
+                    last = level_last_alert.get(str(cur_deep))
+                    send_repeat = True
+                    if last:
+                        elapsed = (datetime.now(timezone.utc) -
+                                   datetime.fromisoformat(last)).total_seconds() / 60
+                        send_repeat = elapsed >= repeat
+                    if send_repeat and cur_deep not in newly:
+                        msg = notify.format_buy_level(ticker, ticker, cur_deep, price, obj.ath, -dd) \
+                              + f"\n(구간 유지 · {repeat}분 재알림)"
+                        if notify.send_message(chat, msg):
+                            db.insert_alert({
+                                "user_id": uid, "ticker": ticker, "kind": "buy_level",
+                                "level": f"-{cur_deep}%(유지)", "message": msg,
+                                "price": price, "ath": obj.ath,
+                            })
+                        level_last_alert[str(cur_deep)] = now_iso()
+            else:
+                newly, cur_deep, dd = evaluate_buy_levels(
+                    price, obj, levels, baseline_level, active_levels)
+
+            if sell_enabled:
+                # --- ATH 초과 매도 ---
+                hit, gain = evaluate_sell_levels(price, obj)
+                if hit:
+                    sell_key = f"sell_{hit}"
+                    if sell_key not in level_last_alert:
+                        msg = notify.format_sell(ticker, hit, price, obj.ath, gain)
+                        if notify.send_message(chat, msg):
+                            db.insert_alert({
+                                "user_id": uid, "ticker": ticker, "kind": "sell",
+                                "level": f"+{hit}%", "message": msg,
+                                "price": price, "ath": obj.ath,
+                            })
+                        level_last_alert[sell_key] = now_iso()
+
+            save_ath(uid, ticker, obj, baseline_level, active_levels, level_last_alert, day)
+            print(f"  {ticker}: px={price:.2f} dd={dd:+.1f}% newly={newly}")
 
 
 # ============================================================

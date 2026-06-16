@@ -1,48 +1,253 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../supabase.js";
-import { getQuotes } from "../quotes.js";
+import { getQuotes, searchTickers } from "../quotes.js";
 
-function pct(now, base) {
-  if (!base) return null;
-  return ((now - base) / base) * 100;
+/* ── 유틸 ── */
+function pct(a, b) {
+  if (!a || !b) return null;
+  return ((a - b) / b) * 100;
 }
-
+function fmtPct(v, digits = 2) {
+  if (v == null) return null;
+  return `${v >= 0 ? "+" : ""}${v.toFixed(digits)}%`;
+}
 function tvLink(sym) {
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(sym)}`;
 }
 
+/* ── SVG 아이콘 ── */
+const PlusIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+const XIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+const EditIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+);
+
+/* ── 자동완성 검색 인풋 ── */
+function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const timer = useRef(null);
+
+  function handleChange(e) {
+    const v = e.target.value;
+    setQ(v);
+    clearTimeout(timer.current);
+    if (!v.trim()) { setResults([]); return; }
+    timer.current = setTimeout(async () => {
+      setBusy(true);
+      const found = await searchTickers(v);
+      setResults(found);
+      setBusy(false);
+    }, 300);
+  }
+
+  return (
+    <div className="ticker-search-wrap">
+      <div className="row-inline">
+        <div style={{ position: "relative", flex: 1 }}>
+          <input
+            autoFocus
+            value={q}
+            onChange={handleChange}
+            placeholder={placeholder || "티커 또는 종목명 검색…"}
+            style={{ width: "100%" }}
+          />
+          {(results.length > 0 || busy) && (
+            <div className="search-dropdown">
+              {busy && <div className="search-item muted">검색 중…</div>}
+              {results.map((r) => (
+                <button key={r.symbol} className="search-item" onClick={() => onSelect(r)}>
+                  <span className="t-sym" style={{ fontSize: 14 }}>{r.symbol}</span>
+                  <span className="t-name" style={{ marginLeft: 8 }}>{r.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <button className="btn-ghost" style={{ whiteSpace: "nowrap" }} onClick={onCancel}>
+          취소
+        </button>
+      </div>
+      {hint && <p className="hint" style={{ marginTop: 6 }}>{hint}</p>}
+    </div>
+  );
+}
+
+/* ── 티커 한 행 ── */
+function TickerRow({ sym, quotes, athMap, onRemove, onEdit }) {
+  const q = quotes[sym];
+  const athRow = athMap[sym];
+  const ath = athRow?.ath ?? null;
+  const price = q?.price ?? null;
+  const prevClose = q?.prevClose ?? null;
+  const name = q?.name && q.name !== sym ? q.name : null;
+
+  const dayChg = pct(price, prevClose);
+  const athChg = pct(price, ath);
+
+  return (
+    <div className="ticker-row">
+      <div className="t-info">
+        <div>
+          <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">
+            {sym}
+          </a>
+        </div>
+        {name && <div className="t-name">{name}</div>}
+        <div className="t-sub">
+          {ath != null
+            ? `ATH ${ath.toFixed(2)}`
+            : prevClose != null
+            ? `전일 ${prevClose.toFixed(2)}`
+            : "ATH 미계산"}
+        </div>
+      </div>
+
+      <div className="t-data">
+        <div className="t-price mono">{price != null ? price.toFixed(2) : "—"}</div>
+        <div className="t-changes">
+          {athChg != null && (
+            <span className={`badge mono ${athChg >= 0 ? "up" : "down"}`}>
+              {fmtPct(athChg)} ATH
+            </span>
+          )}
+          {dayChg != null && (
+            <span className={`badge mono ${dayChg >= 0 ? "up" : "down"}`}>
+              {fmtPct(dayChg)} 전일
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="t-actions">
+        {onEdit && (
+          <button className="icon-btn-sm" onClick={onEdit} title="수정">
+            <EditIcon />
+          </button>
+        )}
+        {onRemove && (
+          <button className="icon-btn-sm danger" onClick={() => onRemove(sym)} title="삭제">
+            <XIcon />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── 섹션 카드 ── */
+function SectionCard({
+  title, note,
+  tickers, quotes, athMap,
+  onRemove, onEdit,
+  onAdd, addDisabled, addLabel,
+  adding, onCancelAdd, onSelectAdd,
+  searchPlaceholder, searchHint,
+}) {
+  return (
+    <div className="card">
+      <div className="section-header">
+        <div>
+          <h2 style={{ marginBottom: 2 }}>{title}</h2>
+          {note && <p className="hint" style={{ margin: 0 }}>{note}</p>}
+        </div>
+        {onAdd && (
+          <button
+            className="icon-btn"
+            onClick={onAdd}
+            disabled={addDisabled}
+            title="추가"
+            style={{ flexShrink: 0 }}
+          >
+            <PlusIcon />
+            {addLabel && <span style={{ fontSize: 11, marginLeft: 4 }}>{addLabel}</span>}
+          </button>
+        )}
+      </div>
+
+      {tickers.length === 0 && !adding && (
+        <p className="muted" style={{ marginTop: 12, fontSize: 14 }}>
+          + 버튼으로 티커를 추가하세요.
+        </p>
+      )}
+
+      {tickers.map((sym) => (
+        <TickerRow
+          key={sym}
+          sym={sym}
+          quotes={quotes}
+          athMap={athMap}
+          onRemove={onRemove}
+          onEdit={onEdit ? () => onEdit(sym) : null}
+        />
+      ))}
+
+      {adding && (
+        <div style={{ marginTop: 12 }}>
+          <TickerSearch
+            onSelect={onSelectAdd}
+            onCancel={onCancelAdd}
+            placeholder={searchPlaceholder}
+            hint={searchHint}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══ 대시보드 ══ */
 export default function Dashboard({ profile, flash }) {
   const [settings, setSettings] = useState(null);
-  const [watch, setWatch] = useState([]);
-  const [athMap, setAthMap] = useState({});      // ticker -> ath row
-  const [quotes, setQuotes] = useState({});       // ticker -> {price, prevClose}
-  const [alerts, setAlerts] = useState([]);
+  const [indexTickers, setIndexTickers] = useState([]);
+  const [watchlist, setWatchlist] = useState([]);
+  const [athMap, setAthMap] = useState({});
+  const [quotes, setQuotes] = useState({});
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState(null);
 
-  // 설정·watchlist·ATH·알림 로드
+  const [addingTo, setAddingTo] = useState(null); // 'ath' | 'watchlist' | null
+  const [editingIndicator, setEditingIndicator] = useState(false);
+
+  const uid = profile.id;
+
   const loadAll = useCallback(async () => {
-    const uid = profile.id;
-    const [{ data: st }, { data: wl }, { data: aths }, { data: al }] = await Promise.all([
-      supabase.from("settings").select("*").eq("user_id", uid).single(),
-      supabase.from("watchlist").select("ticker").eq("user_id", uid),
-      supabase.from("ath_state").select("*").eq("user_id", uid),
-      supabase.from("alerts").select("*").eq("user_id", uid).order("created_at", { ascending: false }).limit(30),
-    ]);
+    const [{ data: st }, { data: ix }, { data: wl }, { data: aths }] =
+      await Promise.all([
+        supabase.from("settings").select("*").eq("user_id", uid).single(),
+        supabase.from("index_tickers").select("ticker").eq("user_id", uid),
+        supabase.from("watchlist").select("ticker").eq("user_id", uid),
+        supabase.from("ath_state").select("*").eq("user_id", uid),
+      ]);
     setSettings(st);
-    setWatch((wl ?? []).map((r) => r.ticker));
+    const ixList = (ix ?? []).map((r) => r.ticker);
+    const wlList = (wl ?? []).map((r) => r.ticker);
+    setIndexTickers(ixList);
+    setWatchlist(wlList);
     const m = {};
     (aths ?? []).forEach((r) => { m[r.ticker] = r; });
     setAthMap(m);
-    setAlerts(al ?? []);
-    return st;
-  }, [profile.id]);
+    return { st, ixList, wlList };
+  }, [uid]);
 
-  // 시세 갱신
-  const refreshQuotes = useCallback(async (st, wl) => {
-    const syms = new Set();
-    if (st) { syms.add(st.index_ticker); if (st.display_ticker) syms.add(st.display_ticker); }
-    (wl ?? []).forEach((t) => syms.add(t));
+  const refreshQuotes = useCallback(async (st, ixList, wlList) => {
+    const syms = new Set([
+      ...(ixList ?? []),
+      ...(st?.indicator_ticker ? [st.indicator_ticker] : []),
+      ...(wlList ?? []),
+    ]);
     if (syms.size === 0) return;
     const q = await getQuotes([...syms]);
     setQuotes(q);
@@ -52,106 +257,177 @@ export default function Dashboard({ profile, flash }) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const st = await loadAll();
-      const { data: wl } = await supabase.from("watchlist").select("ticker").eq("user_id", profile.id);
-      await refreshQuotes(st, (wl ?? []).map((r) => r.ticker));
+      const { st, ixList, wlList } = await loadAll();
+      await refreshQuotes(st, ixList, wlList);
       setLoading(false);
     })();
-  }, [loadAll, refreshQuotes, profile.id]);
+  }, [loadAll, refreshQuotes]);
 
-  // 30초마다 시세 자동 갱신
   useEffect(() => {
-    if (!settings) return;
-    const id = setInterval(() => refreshQuotes(settings, watch), 30000);
-    return () => clearInterval(id);
-  }, [settings, watch, refreshQuotes]);
-
-  if (loading) return <div className="card"><p className="muted">불러오는 중…</p></div>;
-
-  if (!settings) {
-    return (
-      <div className="card">
-        <h2>시작하기</h2>
-        <p className="muted">먼저 <b>설정</b> 탭에서 감시할 티커와 알림 기준을 저장하세요.</p>
-      </div>
+    if (loading) return;
+    const id = setInterval(
+      () => refreshQuotes(settings, indexTickers, watchlist),
+      30000
     );
+    return () => clearInterval(id);
+  }, [loading, settings, indexTickers, watchlist, refreshQuotes]);
+
+  /* ── ATH 감시 티커 추가/삭제 ── */
+  async function addIndexTicker(item) {
+    const t = item.symbol;
+    if (indexTickers.length >= 5) {
+      flash("ATH 감시는 최대 5개까지 추가할 수 있습니다");
+      return;
+    }
+    if (indexTickers.includes(t)) { setAddingTo(null); return; }
+    const { error } = await supabase
+      .from("index_tickers")
+      .insert({ user_id: uid, ticker: t });
+    if (error) { flash("추가 실패: " + error.message); return; }
+    const next = [...indexTickers, t];
+    setIndexTickers(next);
+    setAddingTo(null);
+    flash(`${t} 추가됨`);
+    refreshQuotes(settings, next, watchlist);
+  }
+  async function removeIndexTicker(t) {
+    await supabase
+      .from("index_tickers")
+      .delete()
+      .eq("user_id", uid)
+      .eq("ticker", t);
+    const next = indexTickers.filter((x) => x !== t);
+    setIndexTickers(next);
+    flash(`${t} 삭제됨`);
   }
 
-  // 상황판 행 구성: 지수 + display + watchlist
-  const boardSyms = [];
-  boardSyms.push({ sym: settings.index_ticker, role: "감시" });
-  if (settings.display_ticker && settings.display_ticker !== settings.index_ticker)
-    boardSyms.push({ sym: settings.display_ticker, role: "참고" });
-  watch.forEach((t) => boardSyms.push({ sym: t, role: "관찰" }));
+  /* ── 기술적 매수신호 티커 변경 ── */
+  async function updateIndicatorTicker(item) {
+    const t = item.symbol;
+    const { error } = await supabase
+      .from("settings")
+      .update({ indicator_ticker: t })
+      .eq("user_id", uid);
+    if (error) { flash("저장 실패: " + error.message); return; }
+    const nextSt = { ...settings, indicator_ticker: t };
+    setSettings(nextSt);
+    setEditingIndicator(false);
+    flash(`기술적 매수신호 티커 → ${t}`);
+    refreshQuotes(nextSt, indexTickers, watchlist);
+  }
+  async function removeIndicatorTicker() {
+    await supabase
+      .from("settings")
+      .update({ indicator_ticker: null })
+      .eq("user_id", uid);
+    const nextSt = { ...settings, indicator_ticker: null };
+    setSettings(nextSt);
+    flash("기술적 매수신호 티커 삭제됨");
+  }
+
+  /* ── 국내주식 DMI 티커 추가/삭제 ── */
+  async function addWatchTicker(item) {
+    const t = item.symbol;
+    if (watchlist.length >= 30) {
+      flash("국내주식 DMI 감시는 최대 30개까지 추가할 수 있습니다");
+      return;
+    }
+    if (watchlist.includes(t)) { setAddingTo(null); return; }
+    const { error } = await supabase
+      .from("watchlist")
+      .insert({ user_id: uid, ticker: t });
+    if (error) { flash("추가 실패: " + error.message); return; }
+    const next = [...watchlist, t];
+    setWatchlist(next);
+    setAddingTo(null);
+    flash(`${t} 추가됨`);
+    refreshQuotes(settings, indexTickers, next);
+  }
+  async function removeWatchTicker(t) {
+    await supabase
+      .from("watchlist")
+      .delete()
+      .eq("user_id", uid)
+      .eq("ticker", t);
+    const next = watchlist.filter((x) => x !== t);
+    setWatchlist(next);
+    flash(`${t} 삭제됨`);
+  }
+
+  if (loading)
+    return <div className="card"><p className="muted">불러오는 중…</p></div>;
+
+  const indicatorTickers = settings?.indicator_ticker
+    ? [settings.indicator_ticker]
+    : [];
 
   return (
     <>
-      <div className="card">
-        <h2>
-          상황판
-          <span style={{ float: "right", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>
-            {updatedAt ? `갱신 ${updatedAt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : ""}
-          </span>
-        </h2>
+      {/* ① ATH 대비 하락율 알림 */}
+      <SectionCard
+        title="ATH 대비 하락율 알림"
+        note={`ATH 대비 설정된 % 하락 시 텔레그램 알림 · 매수 신호: ATH 대비 −${
+          (settings?.drawdown_levels ?? [10, 20, 30]).join(" / −")
+        }%`}
+        tickers={indexTickers}
+        quotes={quotes}
+        athMap={athMap}
+        onRemove={removeIndexTicker}
+        onAdd={() => setAddingTo("ath")}
+        addDisabled={indexTickers.length >= 5}
+        addLabel={`${indexTickers.length}/5`}
+        adding={addingTo === "ath"}
+        onCancelAdd={() => setAddingTo(null)}
+        onSelectAdd={addIndexTicker}
+        searchPlaceholder="예: QQQ, SPY, 069500"
+        searchHint="ATH 대비 하락율 신호를 계산할 지수 티커. 최대 5개."
+      />
 
-        {/* 컬럼 헤더 */}
-        <div className="board-head">
-          <span>종목</span>
-          <span style={{ textAlign: "right" }}>현재가</span>
-          <span style={{ textAlign: "right" }}>전고점 대비</span>
-        </div>
+      {/* ② 기술적 매수신호 알림 */}
+      <SectionCard
+        title="기술적 매수신호 알림"
+        note="DMI·스토캐스틱·거래량 기준, 장시작/마감 특정 시점 판정 · 매도 신호: ATH 대비 +10% / +20% …"
+        tickers={indicatorTickers}
+        quotes={quotes}
+        athMap={athMap}
+        onRemove={indicatorTickers.length > 0 ? removeIndicatorTicker : null}
+        onEdit={indicatorTickers.length > 0 ? () => setEditingIndicator(true) : null}
+        onAdd={indicatorTickers.length === 0 ? () => setEditingIndicator(true) : null}
+        adding={editingIndicator}
+        onCancelAdd={() => setEditingIndicator(false)}
+        onSelectAdd={updateIndicatorTicker}
+        searchPlaceholder="예: QQQ, 069500"
+        searchHint="DMI·거래량 보조지표 계산에 사용할 티커. 1개."
+      />
 
-        {boardSyms.map(({ sym, role }) => {
-          const q = quotes[sym];
-          const ath = athMap[sym]?.ath ?? null;
-          const price = q?.price ?? null;
-          // ATH 있으면 전고점 대비, 없으면 전일 대비
-          const usingAth = ath != null;
-          const base = ath ?? q?.prevClose ?? null;
-          const change = price != null ? pct(price, base) : null;
-          const isDown = change != null && change < 0;
-          const nearBuy = usingAth && change != null && change <= -(settings.drawdown_levels?.[0] ?? 10) + 1;
-          const name = q?.name && q.name !== sym ? q.name : null;
+      {/* ③ 국내주식 DMI 매수신호 알림 */}
+      <SectionCard
+        title="국내주식 DMI 매수신호 알림"
+        note="개별 종목 DMI 매수신호 감시 · 한국어 종목명 또는 6자리 코드로 검색"
+        tickers={watchlist}
+        quotes={quotes}
+        athMap={athMap}
+        onRemove={removeWatchTicker}
+        onAdd={() => setAddingTo("watchlist")}
+        addDisabled={watchlist.length >= 30}
+        addLabel={`${watchlist.length}/30`}
+        adding={addingTo === "watchlist"}
+        onCancelAdd={() => setAddingTo(null)}
+        onSelectAdd={addWatchTicker}
+        searchPlaceholder="예: 삼성전자, 005930, KODEX"
+        searchHint="국내 주식 종목명 또는 6자리 코드로 검색. 최대 30개."
+      />
 
-          return (
-            <div className={`ticker-row ${nearBuy ? "alert" : ""}`} key={sym + role}>
-              <div>
-                <span className="t-sym">{sym}</span>
-                <span className="chip">{role}</span>
-                {name && <div className="t-name">{name}</div>}
-                <div className="t-sub">
-                  {usingAth ? `ATH ${ath.toFixed(2)}` : q?.prevClose ? `전일 ${q.prevClose.toFixed(2)}` : "기준 없음"}
-                </div>
-              </div>
-              <div className="t-price mono">{price != null ? price.toFixed(2) : "—"}</div>
-              <div className={`t-chg mono ${change == null ? "" : isDown ? "down" : "up"}`}>
-                {change == null ? "—" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}
-                {!usingAth && change != null && <div className="t-basis">전일 대비</div>}
-              </div>
-            </div>
-          );
-        })}
-        <p className="hint" style={{ marginTop: 10, fontSize: 12, color: "var(--text-faint)" }}>
-          현재가는 30초마다 갱신됩니다. 전고점(ATH)은 엔진이 계산해 채웁니다. 아직 ATH가 없는 종목은 전일 종가 대비로 표시됩니다.
-        </p>
-      </div>
-
-      <div className="card">
-        <h2>최근 알림</h2>
-        {alerts.length === 0 ? (
-          <p className="muted">아직 알림이 없습니다. 신호가 발생하면 여기와 텔레그램에 표시됩니다.</p>
-        ) : (
-          alerts.map((a) => (
-            <div className="alert-item" key={a.id}>
-              <span className="alert-time">
-                {new Date(a.created_at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
-              </span>
-              <span><b>{a.ticker}</b> {a.level}</span>
-              <a className="alert-link" href={tvLink(a.ticker)} target="_blank" rel="noreferrer">차트 ↗</a>
-            </div>
-          ))
-        )}
-      </div>
+      <p className="hint" style={{ textAlign: "center", marginTop: 4, fontSize: 12 }}>
+        현재가 30초마다 갱신 · ATH는 엔진이 계산 · 미국/한국 시장 지원
+        {updatedAt
+          ? ` · 갱신 ${updatedAt.toLocaleTimeString("ko-KR", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}`
+          : ""}
+      </p>
     </>
   );
 }

@@ -40,12 +40,15 @@ export default async function handler(req, res) {
     const meta = result.meta || {};
     const price = meta.regularMarketPrice ?? null;
 
-    // 전일 종가: meta의 previousClose를 우선 사용 (chartPreviousClose는
-    // range 시작일 기준이라 부정확할 수 있음).
+    // 전일 종가: 차트 데이터의 실제 확정 종가에서 직전 거래일 값을 사용.
+    // meta.regularMarketPreviousClose는 장중에 부정확한 경우가 있어 보조 수단으로만 사용.
+    const rawCloses = result.indicators?.quote?.[0]?.close ?? [];
+    const validCloses = rawCloses.filter((c) => c != null && c > 0);
+    const chartPrev = validCloses.length >= 2 ? validCloses[validCloses.length - 2] : null;
     let prevClose =
+      chartPrev ??
       meta.regularMarketPreviousClose ??
       meta.previousClose ??
-      meta.chartPreviousClose ??
       null;
 
     // 종목명
