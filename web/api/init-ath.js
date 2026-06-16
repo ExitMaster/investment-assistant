@@ -1,17 +1,31 @@
 // Vercel Serverless: POST /api/init-ath
 // 티커 추가 시 즉시 ATH ratchet 계산 → ath_state upsert
 
-// Python engine의 build_ath_from_history와 동일한 로직:
-// 기간 내 최고가를 ATH 기준으로 삼음 (ratchet 전체 적용 시 상승장에서 ATH 고정 버그 방지)
+// Python engine의 compute_ath_state와 동일한 로직 (확정 고점 방식):
+// 어떤 고점에서 resetPct% 눌림이 나오면 그 고점을 ATH로 확정, 위로만 갱신.
+// 상승장에서 resetPct% 미만 눌림·재상승 반복 시 직전 확정 고점 유지.
+// 구간 내 조정이 한 번도 없으면 종가 최고값으로 폴백.
 function buildAthFromHistory(closes, resetPct = 10) {
-  const valid = closes.filter((c) => c != null && c > 0);
-  if (!valid.length) return null;
-  const ath = Math.max(...valid);
-  const last = valid[valid.length - 1];
+  const vals = closes.filter((c) => c != null && c > 0).map(Number);
+  if (!vals.length) return null;
+  const r = resetPct / 100;
+
+  let ath = null;
+  let peak = vals[0]; // 현재 미확정 구간의 고점
+  for (const c of vals) {
+    if (c > peak) peak = c;
+    if (c <= peak * (1 - r)) {
+      // peak 대비 resetPct% 눌림 → 확정 (위로만)
+      ath = ath === null ? peak : Math.max(ath, peak);
+      peak = c; // 눌림 지점부터 새 구간 시작
+    }
+  }
+  if (ath === null) ath = Math.max(...vals); // 조정 없던 예외 → 폴백
+
   return {
     ath,
-    running_high: last,
-    exceeded_threshold: last >= ath * (1 + resetPct / 100),
+    running_high: peak,
+    exceeded_threshold: peak > ath,
   };
 }
 

@@ -10,43 +10,76 @@ import pandas as pd
 # ============================================================
 # 1. ATH RATCHET 로직 (우리가 합의한 핵심 규칙)
 # ============================================================
+def compute_ath_state(closes, reset_pct=10.0):
+    """확정 고점(confirmed peak) 방식으로 ATH 상태를 계산한다.
+
+    규칙:
+    - 한 구간의 고점(peak)을 추적하다가, 종가가 peak 대비 reset_pct% 이상
+      눌리면 그 peak를 '확정'하고 ATH = max(기존 ATH, peak) 로 갱신(위로만).
+    - 확정 후엔 그 눌림 지점부터 새 구간의 고점 추적을 다시 시작.
+    - 상승만 하고 reset_pct% 눌림이 없으면 직전 확정 고점이 ATH로 유지된다
+      (→ ATH 대비 +10/20/30%에서 매도 신호가 계속 발생).
+    - 구간 내 reset_pct% 조정이 한 번도 없으면 종가 최고값으로 폴백.
+
+    반환: {"ath", "running_high", "exceeded_threshold"} 또는 None.
+    """
+    vals = [float(c) for c in closes if c is not None and float(c) > 0]
+    if not vals:
+        return None
+    r = reset_pct / 100.0
+
+    ath = None
+    peak = vals[0]            # 현재 구간(미확정)의 고점
+    for c in vals:
+        if c > peak:
+            peak = c
+        if c <= peak * (1 - r):           # peak 대비 reset_pct% 눌림 → 확정
+            ath = peak if ath is None else max(ath, peak)
+            peak = c                       # 눌림 지점부터 새 구간 시작
+
+    if ath is None:                        # 조정이 한 번도 없던 예외 → 폴백
+        ath = max(vals)
+
+    running_high = peak                    # 현재 미확정 구간의 고점
+    return {
+        "ath": ath,
+        "running_high": running_high,
+        # 다음 눌림 발생 시 ATH를 끌어올릴 후보가 있는지 (정보용)
+        "exceeded_threshold": running_high > ath,
+    }
+
+
 class AthRatchet:
     """
-    종가 기준 ATH 기준선 관리.
-    - 평소 신고가는 ATH를 갱신하지 않고 running_high로만 추적
-    - running_high가 ATH 대비 +reset_pct 초과한 적이 있고
-      그 뒤 종가가 ATH 아래로 내려오면 → ATH를 running_high로 갱신
-    - 쌍봉/횡보(+reset_pct 미달)로는 ATH 불변
+    종가 기준 ATH 기준선 관리 (확정 고점 방식).
+    - 구간 고점이 reset_pct% 눌림으로 확정될 때만 ATH 갱신, 위로만 상향.
+    - 상승장에서 reset_pct% 미만 눌림·재상승 반복 시 직전 확정 고점 유지.
+
+    운영에서는 매 거래일 일봉 히스토리로 compute_ath_state를 호출해
+    상태를 재계산하므로, 아래 update()는 단건 증분 갱신용 보조 메서드다.
     """
     def __init__(self, initial_ath, reset_pct=10.0):
         self.ath = float(initial_ath)
         self.reset_pct = reset_pct / 100.0
         self.running_high = float(initial_ath)
-        self.exceeded_threshold = False  # running_high가 +10% 넘은 적 있나
+        self.exceeded_threshold = False  # running_high > ath (상향 후보)
 
     def update(self, close):
-        """하루 종가를 받아 상태 갱신. 갱신 이벤트가 있으면 반환."""
+        """하루 종가를 받아 상태 증분 갱신. 갱신 이벤트가 있으면 반환."""
         event = None
+        close = float(close)
 
-        # running_high 추적
         if close > self.running_high:
             self.running_high = close
 
-        # running_high가 ATH 대비 +reset_pct 초과했는지 기록
-        if self.running_high >= self.ath * (1 + self.reset_pct):
-            self.exceeded_threshold = True
-
-        # ATH 아래로 종가가 내려왔을 때
-        if close < self.ath:
-            if self.exceeded_threshold:
-                # +10% 넘었다가 내려옴 → ATH 갱신
+        # 현재 구간 고점(running_high) 대비 reset_pct% 눌림 → 확정
+        if close <= self.running_high * (1 - self.reset_pct):
+            if self.running_high > self.ath:     # 위로만 갱신
                 old = self.ath
                 self.ath = self.running_high
                 event = ('ATH_UPDATED', old, self.ath)
-                # 리셋
-                self.running_high = close
-                self.exceeded_threshold = False
-            # 넘은 적 없으면(쌍봉/횡보) ATH 불변
+            self.running_high = close             # 새 구간 시작
+        self.exceeded_threshold = self.running_high > self.ath
         return event
 
     def drawdown_pct(self, price):

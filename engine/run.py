@@ -182,6 +182,12 @@ def run_intraday():
                 continue
 
             is_new_day = not saved or saved.get("last_trade_day") != day
+            if is_new_day and saved:
+                # 새 거래일 첫 실행: 확정 종가 히스토리로 ATH 재계산(확정 고점 갱신)
+                closes = get_daily_closes_for_ath(ticker, st.get("ath_lookback", "5y"))
+                rebuilt = build_ath_from_history(closes, reset_pct=reset_pct) if closes else None
+                if rebuilt is not None:
+                    obj = rebuilt
             if is_new_day:
                 dd_now = obj.drawdown_pct(price)
                 baseline_level = deepest_level(dd_now, levels)

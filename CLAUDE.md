@@ -48,12 +48,16 @@ README.md
 - GitHub Actions Secrets: `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `TELEGRAM_BOT_TOKEN`
 - Vercel 환경변수: `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_TELEGRAM_BOT_USERNAME`
 ## 핵심 로직 (반드시 보존)
-- **ATH ratchet**: 신고가는 ATH를 즉시 갱신하지 않음. 신고가가 ATH 대비 +reset_pct(기본 10%)
-  이상 오른 적이 있고, 그 뒤 종가가 ATH 아래로 내려올 때만 그동안의 running_high로 ATH 갱신.
-  쌍봉·횡보로는 ATH 불변(노이즈 방지). 매도 신호는 ATH+10%/+20%… 매 구간마다 발생하되
-  기준선(ATH)은 안 올라감.
-- **과거 히스토리 초기화**(`build_ath_from_history`)는 ratchet 규칙을 전체 적용하지 않고
-  "기간 내 종가 최고값"을 기준선으로 잡음 — 상승장에서 ATH가 첫 종가에 고정되는 버그 방지.
+- **ATH ratchet (확정 고점 방식)**: 어떤 고점에서 reset_pct(기본 10%)% 이상 눌림(하락)이
+  나오면 그 고점을 ATH로 확정하고 **위로만** 갱신(`indicators.compute_ath_state`). reset_pct%
+  미만 눌림·재상승이 반복되는 상승장에서는 직전 확정 고점이 ATH로 유지됨 → 매도 신호는
+  ATH+10%/+20%… 매 구간마다 발생하되 기준선(ATH)은 안 올라감. 확정 고점보다 낮은 고점이
+  새로 확정돼도 ATH는 안 내려감(전고점=최고치). 구간 내 reset_pct% 조정이 한 번도 없으면
+  종가 최고값으로 폴백.
+- **계산 일관성**: init-ath.js(티커 추가)·build_ath_from_history(엔진 부트스트랩)·매 거래일
+  첫 intraday 실행이 모두 동일한 확정-고점 정의로 ATH를 히스토리에서 재계산한다. ATH는
+  확정 일봉 종가 기준으로만 전진하며 장중 실시간가로는 움직이지 않음.
+  (과거: ratchet update가 실제로 호출되지 않아 ATH가 추가 시점 max값에 고정돼 있던 버그 수정.)
 - **baseline**: 매 거래일 시작 시 전일 종가의 하락 레벨을 기준으로, 이미 통과한 얕은 레벨은
   신규 알림에서 제외하고 더 깊은 레벨만 감시. 구간 유지 재알림은 "당일 신규 진입한 레벨"에만 적용.
 - **매도 상태는 정수배열(active_levels)이 아니라 level_last_alert(JSON)에 기록** — DB가 정수

@@ -391,7 +391,9 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
             />
           </div>
           <div className="hint">
-            신고가가 현재 ATH 대비 이 % 이상 상승한 뒤 다시 내려올 때만 ATH가 갱신됩니다 (쌍봉·노이즈 방지).
+            어떤 고점에서 이 % 이상 눌림(하락)이 나오면 그 고점을 ATH로 확정합니다(위로만 갱신).
+            이보다 작은 눌림과 재상승이 반복되는 상승장에서는 직전 확정 고점이 ATH로 유지되어,
+            ATH 대비 +10/20/30%에서 매도 신호가 발생합니다 (쌍봉·노이즈 방지).
           </div>
         </div>
 
