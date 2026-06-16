@@ -204,9 +204,13 @@ def run_intraday():
             # (매 거래일이 아니라 ATH 갱신을 기준으로 상태를 리셋한다 — 회복 후 재돌파 중복 알림 방지)
             prev_ath = saved.get("ath") if saved else None
             ath_advanced = (prev_ath is None) or (obj.ath > prev_ath + 1e-9)
+            # 엔진이 이 티커를 처음 평가하는가. init-ath가 ath_state 행을 미리 만들어
+            # saved가 존재할 수 있으므로, last_trade_day 미설정(None)으로 '최초 평가'를 판별한다.
+            never_evaluated = (saved is None) or (saved.get("last_trade_day") is None)
 
-            if saved is None:
-                # 최초 등록: 이미 도달한 레벨은 알림 억제(baseline), 이후 더 깊은 레벨부터 알림
+            if never_evaluated:
+                # 최초 평가(티커 추가 직후 포함): 이미 도달한 레벨은 알림 억제(baseline),
+                # 이후 더 깊은 레벨부터 알림 → 가입 전 하락분 스팸 방지
                 dd_now = obj.drawdown_pct(price)
                 baseline_level = deepest_level(dd_now, levels)
                 active_levels = []
