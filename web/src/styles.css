@@ -278,7 +278,7 @@ input, select {
 .copy-row select { width: 100%; font-size: 13px; padding: 6px; }
 
 /* ── 상태 게이지 ── */
-.gauge-row { padding: 4px 4px 14px; border-top: 1px dashed var(--border); }
+.gauge-row { padding: 4px 4px 14px; }
 .gauge { padding-top: 6px; }
 .gauge-empty { padding: 10px 4px; font-size: 12px; color: var(--text-faint); }
 .gauge-head {

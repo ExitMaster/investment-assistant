@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../supabase.js";
-import { getQuotes, searchTickers } from "../quotes.js";
+import { getQuotes, searchTickers, resolveKR } from "../quotes.js";
 
 /* ── 유틸 ── */
 function pct(a, b) {
@@ -11,8 +11,21 @@ function fmtPct(v, digits = 2) {
   if (v == null) return null;
   return `${v >= 0 ? "+" : ""}${v.toFixed(digits)}%`;
 }
-function tvLink(sym) {
-  return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(sym)}`;
+// 지수·환율 → TradingView 정식 심볼 (한국 지수/주식 예외 매핑)
+const TV_SYMBOL = {
+  "^KS11": "KRX:KOSPI", "^KQ11": "KRX:KOSDAQ", "^KS200": "KRX:KOSPI200",
+  "^IXIC": "NASDAQ:IXIC", "^NDX": "TVC:NDX", "^GSPC": "TVC:SPX",
+  "^DJI": "TVC:DJI", "^RUT": "TVC:RUT", "^VIX": "TVC:VIX", "^SOX": "TVC:SOX",
+  "USDKRW=X": "FX_IDC:USDKRW",
+};
+function tvSymbol(sym, krInfo) {
+  if (TV_SYMBOL[sym]) return TV_SYMBOL[sym];
+  const code = (sym || "").split(".")[0];
+  if (/^\d{6}$/.test(code)) return krInfo?.tvSymbol || `KRX:${code}`;
+  return sym;
+}
+function tvLink(sym, krInfo) {
+  return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(tvSymbol(sym, krInfo))}`;
 }
 function isKR(sym) { return /^\d{6}/.test((sym || "").split(".")[0]); }
 
@@ -574,13 +587,14 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
 
 /* ── 티커 한 행 ── */
 function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDragging, isDragOver,
-                    showGauge, expanded, onToggle, buyLevels }) {
+                    showGauge, expanded, onToggle, buyLevels, krInfo }) {
   const q = quotes[sym];
   const athRow = athMap[sym];
   const ath = athRow?.ath ?? null;
   const price = q?.price ?? null;
   const prevClose = q?.prevClose ?? null;
-  const name = q?.name && q.name !== sym && q.name !== displaySym(sym) ? q.name : null;
+  const krName = isKR(sym) ? krInfo?.name : null;
+  const name = krName || (q?.name && q.name !== sym && q.name !== displaySym(sym) ? q.name : null);
   const dayChg = pct(price, prevClose);
   const athChg = pct(price, ath);
 
@@ -611,7 +625,7 @@ function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDr
         )}
 
         <div className="t-info">
-          <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer"
+          <a className="t-sym" href={tvLink(sym, krInfo)} target="_blank" rel="noreferrer"
              onClick={(e) => e.stopPropagation()}>{dsym}</a>
           {name && <div className="t-name">{name}</div>}
         </div>
@@ -665,7 +679,7 @@ function SectionCard({
   onAdd, addDisabled, addLabel,
   adding, onCancelAdd, onSelectAdd,
   searchPlaceholder, searchHint,
-  withGauge, buyLevels,
+  withGauge, buyLevels, krNames,
 }) {
   const [showNote, setShowNote] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -781,6 +795,7 @@ function SectionCard({
             expanded={expanded.has(sym)}
             onToggle={toggleExpand}
             buyLevels={buyLevels}
+            krInfo={krNames?.[sym.split(".")[0]]}
           />
         ))}
       </div>
@@ -807,6 +822,7 @@ export default function Dashboard({ profile, flash }) {
   const [watchlist, setWatchlist] = useState([]);
   const [athMap, setAthMap] = useState({});
   const [quotes, setQuotes] = useState({});
+  const [krNames, setKrNames] = useState({});   // 6자리코드 → {name, tvSymbol}
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [addingTo, setAddingTo] = useState(null);
@@ -862,6 +878,24 @@ export default function Dashboard({ profile, flash }) {
     );
     return () => clearInterval(quoteTimer.current);
   }, [loading, indexTickers, indicatorTickers, watchlist, refreshQuotes]);
+
+  /* 한국 종목 한국어명 해석 (TradingView 심볼검색) */
+  useEffect(() => {
+    const codes = [...indexTickers, ...indicatorTickers, ...watchlist]
+      .map((s) => s.split(".")[0])
+      .filter((c) => /^\d{6}$/.test(c));
+    const missing = [...new Set(codes)].filter((c) => !(c in krNames));
+    if (!missing.length) return;
+    (async () => {
+      const entries = await Promise.all(missing.map(async (c) => [c, await resolveKR(c)]));
+      setKrNames((prev) => {
+        const n = { ...prev };
+        for (const [c, v] of entries) n[c] = v;
+        return n;
+      });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indexTickers, indicatorTickers, watchlist]);
 
   /* ATH 즉시 초기화 (티커 추가 직후) */
   async function initAth(ticker) {
@@ -974,10 +1008,10 @@ export default function Dashboard({ profile, flash }) {
     <>
       {/* ① ATH 대비 하락율∙매도 알림 */}
       <SectionCard
-        title="ATH 대비 하락율∙매도 알림"
-        note={`ATH 대비 설정된 % 하락 시 텔레그램 알림 · 매수 신호: ATH 대비 −${
-          (settings?.drawdown_levels ?? [10, 20, 30, 40]).join(" / −")
-        }% · 매도 알림: ATH 도달 및 ATH 대비 매 10% 초과 상승 시.`}
+        title="전고점(ATH) 매수·매도 알림"
+        note={`전고점(ATH) 대비 하락하면 매수 신호, ATH에 도달하거나 초과 상승하면 매도 신호를 텔레그램으로 보냅니다. ` +
+          `매수 레벨: ATH 대비 −${(settings?.drawdown_levels ?? [10, 20, 30, 40]).join(" / −")}% · ` +
+          `매도: ATH 도달 시, 그리고 +10 / +20 / +30%마다.`}
         tickers={indexTickers}
         quotes={quotes}
         athMap={athMap}
@@ -994,12 +1028,13 @@ export default function Dashboard({ profile, flash }) {
         searchHint="ATH 대비 하락율∙매도 신호를 계산할 지수 티커. 최대 10개."
         withGauge
         buyLevels={settings?.drawdown_levels ?? [10, 20, 30, 40]}
+        krNames={krNames}
       />
 
       {/* ② 기술적 매수∙매도신호 알림 */}
       <SectionCard
         title="기술적 매수∙매도신호 알림"
-        note="DMI·스토캐스틱·거래량 기준, 장시작/마감 특정 시점 판정 · 매도 신호: ATH 대비 +10% / +20% …"
+        note="DMI·스토캐스틱·거래량 보조지표로 매수·매도 신호를 판정합니다(설정한 개장/마감 기준 시점, 일봉 확정값). 다이버전스·대량거래 돌파는 예외적 매수·매도 신호."
         tickers={indicatorTickers}
         quotes={quotes}
         athMap={athMap}
@@ -1014,6 +1049,7 @@ export default function Dashboard({ profile, flash }) {
         onSelectAdd={addIndicatorTicker}
         searchPlaceholder="예: QQQ, 069500"
         searchHint="DMI·거래량 보조지표 계산에 사용할 티커. 최대 50개."
+        krNames={krNames}
       />
 
       {/* ③ 개별주식 DMI 매수신호 알림 */}
@@ -1034,10 +1070,11 @@ export default function Dashboard({ profile, flash }) {
         onSelectAdd={addWatchTicker}
         searchPlaceholder="예: 삼성전자, 005930, KODEX"
         searchHint="개별주식 종목명 또는 6자리 코드로 검색. 최대 50개."
+        krNames={krNames}
       />
 
       <p className="hint" style={{ textAlign: "center", marginTop: 4, fontSize: 11 }}>
-        현재가 10초마다 갱신 · ATH는 엔진이 계산 · 미국/한국 시장 지원
+        현재가 10초마다 갱신 · 미국/한국 시장 지원
         {updatedAt
           ? ` · ${updatedAt.toLocaleTimeString("ko-KR", {
               hour: "2-digit", minute: "2-digit", second: "2-digit",
