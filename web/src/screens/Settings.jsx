@@ -177,7 +177,7 @@ function PerTickerActions({ indexTickers, tickerActions, setTickerActions, level
   );
 }
 
-export default function Settings({ profile, flash, onTelegramLinked, isAdmin, onAdmin }) {
+export default function Settings({ profile, flash, isAdmin, onAdmin }) {
   const [s, setS] = useState(null);
   const [indexTickers, setIndexTickers] = useState([]);
   const [tickerActions, setTickerActions] = useState({});

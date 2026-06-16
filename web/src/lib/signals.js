@@ -50,7 +50,7 @@ function rollingMean(x, w) {
 // ── ATH 확정-고점 시계열 (compute_ath_state의 증분판) ──
 // 각 봉 시점의 ATH 기준선 배열을 반환. ATH는 고점에서 resetPct% 눌림이
 // 확정될 때만, 위로만 갱신된다.
-export function athSeries(close, resetPct = 10) {
+function athSeries(close, resetPct = 10) {
   const r = resetPct / 100;
   const out = new Array(close.length).fill(NaN);
   let ath = close[0];
