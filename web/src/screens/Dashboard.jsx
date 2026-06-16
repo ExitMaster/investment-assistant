@@ -154,16 +154,13 @@ function useDragSort(externalItems, onCommit, enabled) {
         return;
       }
       e.preventDefault();
-      const y = t.clientY;
-      const rows = containerRef.current?.querySelectorAll("[data-row-idx]");
-      if (!rows) return;
-      rows.forEach(row => {
-        const r = row.getBoundingClientRect();
-        if (y >= r.top && y <= r.bottom) {
-          const i = +row.dataset.rowIdx;
-          if (i !== s.current.over) { s.current.over = i; setOverIdx(i); }
-        }
-      });
+      // 손가락 좌표 아래의 실제 DOM 요소를 찾아 그 행 인덱스를 사용 (rect 루프보다 정확)
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      const row = el?.closest?.("[data-row-idx]");
+      if (row && containerRef.current?.contains(row)) {
+        const i = +row.dataset.rowIdx;
+        if (!Number.isNaN(i) && i !== s.current.over) { s.current.over = i; setOverIdx(i); }
+      }
     }
     function onEnd() {
       clearTimeout(s.current.timer);

@@ -9,6 +9,9 @@ import urllib.parse
 import json
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+APP_URL = os.environ.get("APP_URL", "https://investment-assistant-navy.vercel.app")
+# 알림 하단에 붙는 링크 (URL 노출 없이 문구에만 하이퍼링크)
+_FOOTER = f'\n\n<a href="{APP_URL}/?screen=alerts">Investment Assistant</a>'
 
 
 def _is_kr(ticker):
@@ -30,7 +33,7 @@ def _fmt_price(price, ticker):
     return f"{price:,.2f}"
 
 
-def send_message(chat_id, text):
+def send_message(chat_id, text, with_footer=True):
     """단일 사용자에게 메시지 발송. 성공 여부 반환."""
     if not BOT_TOKEN or not chat_id:
         print(f"[telegram] skip: token/chat_id missing (chat={chat_id})")
@@ -38,7 +41,7 @@ def send_message(chat_id, text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = urllib.parse.urlencode({
         "chat_id": chat_id,
-        "text": text,
+        "text": text + (_FOOTER if with_footer else ""),
         "parse_mode": "HTML",
         "disable_web_page_preview": "true",
     }).encode()

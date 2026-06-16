@@ -128,6 +128,21 @@ input, select {
 .icon-btn-sm:hover { background: var(--bg-elev); color: var(--text-dim); }
 .icon-btn-sm.danger:hover { background: var(--down-bg); color: var(--down); }
 
+/* ── 알림 일시중지 벨 ── */
+.mute-bell {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+.mute-bell:active { transform: scale(0.92); }
+
 /* ── 카드 ── */
 .card {
   background: var(--bg-card);

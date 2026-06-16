@@ -37,6 +37,20 @@ def _is_kr(ticker):
     return bool(_re.match(r'^\d{6}', ticker.split('.')[0]))
 
 
+def is_muted(st):
+    """settings.muted_until 가 현재보다 미래면 알림 일시중지 상태."""
+    mu = st.get("muted_until")
+    if not mu:
+        return False
+    try:
+        until = datetime.fromisoformat(mu.replace("Z", "+00:00"))
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) < until
+    except (TypeError, ValueError):
+        return False
+
+
 def should_run_indicator(ticker, alert_times, now_utc, window_min=5):
     """indicator_alert_times 중 하나와 현재 시각이 ±window_min분 이내면 True.
     alert_times 미설정 시 항상 True."""
@@ -112,6 +126,9 @@ def run_intraday():
         chat = u.get("telegram_chat_id")
         st = db.get_settings(uid)
         if not st:
+            continue
+        if is_muted(st):
+            print(f"  {uid}: muted, skip")
             continue
 
         ticker_rows = db.get_index_tickers(uid)
@@ -266,6 +283,9 @@ def run_indicators():
         chat = u.get("telegram_chat_id")
         st = db.get_settings(uid)
         if not st:
+            continue
+        if is_muted(st):
+            print(f"  {uid}: muted, skip")
             continue
 
         alert_times = st.get("indicator_alert_times") or []

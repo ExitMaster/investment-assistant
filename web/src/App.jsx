@@ -50,7 +50,10 @@ const LogoutIcon = () => (
 export default function App() {
   const [session, setSession] = useState(undefined);
   const [profile, setProfile] = useState(null);
-  const [screen, setScreen] = useState("dashboard");
+  const [screen, setScreen] = useState(() => {
+    const s = new URLSearchParams(window.location.search).get("screen");
+    return ["dashboard", "alerts", "settings", "admin"].includes(s) ? s : "dashboard";
+  });
   const [theme, setTheme] = useState(
     () => localStorage.getItem("ia-theme") || "dark"
   );
