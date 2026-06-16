@@ -188,14 +188,21 @@ export function MarqueeTape({ uid }) {
     );
   });
 
-  // 아이템 수에 따라 속도 조정 (아이템 하나당 약 4초)
-  const duration = Math.max(12, visible.length * 4);
+  // steps(N) = ticker 단위로 딱딱 이동, 각 ticker 3초 노출 후 슬라이드
+  const n = visible.length || 1;
+  const duration = n * 3;
 
   return (
     <>
       <div className="marquee-wrap" style={{ position: "relative" }}>
         <div className="marquee-scroll" style={{ overflow: "hidden" }}>
-          <div className="marquee-track" style={{ animationDuration: `${duration}s` }}>
+          <div
+            className="marquee-track"
+            style={{
+              animationDuration: `${duration}s`,
+              animationTimingFunction: `steps(${n}, end)`,
+            }}
+          >
             {itemEls}
             {itemEls}
           </div>
