@@ -108,7 +108,7 @@ function MutePanel({ uid }) {
   return (
     <div className="card" style={{ marginBottom: 14 }}>
       {/* 마스터 차단 토글 */}
-      <div className="toggle-row" style={{ marginTop: 0 }}>
+      <div className="toggle-row" style={{ marginTop: 0, borderBottom: "none" }}>
         <div>
           <div className="toggle-label">알림 전체 차단</div>
           <div className="toggle-desc">켜면 모든 텔레그램 알림이 무기한 차단됩니다(타이머와 별개).</div>

@@ -277,7 +277,7 @@ export default function Settings({ profile, flash, onTelegramLinked, isAdmin, on
         <h2>표시 설정</h2>
 
         {/* 등락 색상 — 단일 토글 */}
-        <div className="toggle-row">
+        <div className="toggle-row" style={{ borderBottom: "none" }}>
           <div>
             <div className="toggle-label">등락 색상 반전</div>
             <div className="toggle-desc">
