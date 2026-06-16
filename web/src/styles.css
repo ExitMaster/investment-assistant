@@ -188,6 +188,19 @@ input, select {
   background: linear-gradient(to right, transparent, var(--bg) 35%);
   padding: 0 8px 0 24px;
 }
+.marquee-arrow {
+  position: absolute; top: 0; bottom: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  width: 28px;
+  background: linear-gradient(to right, var(--bg) 60%, transparent);
+  border: none; cursor: pointer;
+  color: var(--text-dim); font-size: 18px; line-height: 1;
+  padding: 0;
+  transition: color 0.15s;
+}
+.marquee-arrow:hover { color: var(--text); }
+.marquee-arrow-left { left: 0; background: linear-gradient(to right, var(--bg) 60%, transparent); }
+.marquee-arrow-right { right: 36px; background: linear-gradient(to left, var(--bg) 60%, transparent); }
 
 /* ── 전광판 관리 패널 ── */
 .marquee-panel {

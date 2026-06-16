@@ -74,7 +74,21 @@ export function MarqueeTape({ uid }) {
   const [showPanel, setShowPanel] = useState(false);
   const [addSym, setAddSym] = useState("");
   const [dragIdx, setDragIdx] = useState(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const timer = useRef(null);
+  const scrollRef = useRef(null);
+
+  function updateScrollState() {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }
+
+  function scrollBy(dx) {
+    scrollRef.current?.scrollBy({ left: dx, behavior: "smooth" });
+  }
 
   // DB에서 marquee_tickers 로드 (없으면 기본값 삽입)
   useEffect(() => {
@@ -163,10 +177,16 @@ export function MarqueeTape({ uid }) {
 
   const visible = items.filter((i) => i.enabled);
 
+  // 가격 로드 후 스크롤 상태 업데이트
+  useEffect(() => { setTimeout(updateScrollState, 100); }, [prices, items]);
+
   return (
     <>
       <div className="marquee-wrap" style={{ position: "relative" }}>
-        <div className="marquee-scroll">
+        {canScrollLeft && (
+          <button className="marquee-arrow marquee-arrow-left" onClick={() => scrollBy(-200)}>‹</button>
+        )}
+        <div className="marquee-scroll" ref={scrollRef} onScroll={updateScrollState}>
           {visible.map((item) => {
             const q = prices[item.symbol];
             const dayChg = q ? pct(q.price, q.prevClose) : null;
@@ -192,6 +212,9 @@ export function MarqueeTape({ uid }) {
             );
           })}
         </div>
+        {canScrollRight && (
+          <button className="marquee-arrow marquee-arrow-right" onClick={() => scrollBy(200)}>›</button>
+        )}
         <div className="marquee-gear">
           <button
             className="icon-btn-sm"
