@@ -294,12 +294,9 @@ export default function Settings({ profile, flash, onTelegramLinked, isAdmin, on
         </div>
 
         {isAdmin && onAdmin && (
-          <>
-            <hr className="divider" />
-            <button className="btn-ghost" style={{ fontSize: 13 }} onClick={onAdmin}>
-              관리자 페이지 →
-            </button>
-          </>
+          <button className="btn-ghost" style={{ fontSize: 13, marginTop: 10 }} onClick={onAdmin}>
+            관리자 페이지 →
+          </button>
         )}
       </div>
 
