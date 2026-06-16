@@ -114,6 +114,112 @@ const EditIcon = () => (
   </svg>
 );
 
+/* ── 알림 종 3종 (전체 off=빗금, 일부=빈 종, 전체 on=채운 종) ── */
+const BellOffIcon = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+    <path d="M18.63 13A17.89 17.89 0 0 1 18 8" />
+    <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14" />
+    <path d="M18 8a6 6 0 0 0-9.33-5" />
+    <line x1="1" y1="1" x2="23" y2="23" />
+  </svg>
+);
+const BellOutlineIcon = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
+const BellFilledIcon = () => (
+  <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" fill="none" />
+  </svg>
+);
+
+/* ── 섹션 알림 종 토글 (탭=전체 on/off, 롱프레스=세부설정) ── */
+function BellToggle({ alertKeys, settings, onChange }) {
+  const [showDetail, setShowDetail] = useState(false);
+  const lpTimer = useRef(null);
+  const lpFired = useRef(false);
+  const wrapRef = useRef(null);
+
+  const states = alertKeys.map((k) => !!settings?.[k.key]);
+  const onCount = states.filter(Boolean).length;
+  const allOn = onCount === alertKeys.length && alertKeys.length > 0;
+  const allOff = onCount === 0;
+
+  function tapToggle() {
+    const target = !allOn;       // 전체 켜져 있으면 끔, 아니면 전부 켬
+    const patch = {};
+    alertKeys.forEach((k) => { patch[k.key] = target; });
+    onChange(patch);
+  }
+  function startPress() {
+    lpFired.current = false;
+    clearTimeout(lpTimer.current);
+    lpTimer.current = setTimeout(() => {
+      lpFired.current = true;
+      setShowDetail(true);
+      try { navigator.vibrate(30); } catch {}
+    }, 500);
+  }
+  function endPress() {
+    clearTimeout(lpTimer.current);
+    if (!lpFired.current) tapToggle();
+  }
+  function cancelPress() { clearTimeout(lpTimer.current); }
+
+  // 바깥 클릭 시 세부설정 닫기
+  useEffect(() => {
+    if (!showDetail) return;
+    function onDoc(e) { if (!wrapRef.current?.contains(e.target)) setShowDetail(false); }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("touchstart", onDoc);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("touchstart", onDoc);
+    };
+  }, [showDetail]);
+
+  const Icon = allOff ? BellOffIcon : allOn ? BellFilledIcon : BellOutlineIcon;
+  const color = allOff ? "var(--text-faint)" : "var(--accent)";
+
+  return (
+    <div className="bell-wrap" ref={wrapRef} style={{ position: "relative" }}>
+      <button
+        className="icon-btn-sm"
+        style={{ color }}
+        title={allOff ? "알림 꺼짐 (탭: 전체 켜기 · 길게: 세부설정)" : "알림 (탭: 전체 끄기 · 길게: 세부설정)"}
+        onPointerDown={startPress}
+        onPointerUp={endPress}
+        onPointerLeave={cancelPress}
+        onContextMenu={(e) => e.preventDefault()}
+      >
+        <Icon />
+      </button>
+      {showDetail && (
+        <div className="bell-detail">
+          <p className="bell-detail-title">알림 세부 설정</p>
+          {alertKeys.map((k) => (
+            <div className="bell-detail-row" key={k.key}>
+              <span>{k.label}</span>
+              <label className="switch" style={{ width: 36, height: 20 }}>
+                <input
+                  type="checkbox"
+                  checked={!!settings?.[k.key]}
+                  onChange={(e) => onChange({ [k.key]: e.target.checked })}
+                />
+                <span style={{ borderRadius: 999 }} />
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── 드래그 정렬 훅 (데스크톱 HTML5 + 모바일 long-press, edit 모드 전용) ── */
 function useDragSort(externalItems, onCommit, enabled) {
   const [list, setList] = useState(externalItems);
@@ -589,6 +695,7 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
       <div className="gauge-above">
         <div className="gauge-ath-tag" style={{ left: `${zeroLeft}%` }}>
           <span className="gauge-ath-name">ATH</span>
+          <span className="gauge-ath-tick" />
           <span className="gauge-ath-val">{fmtPrice(ath, sym)}</span>
         </div>
         {g.marks.filter((m) => m !== 0).map((m) => (
@@ -730,6 +837,7 @@ function SectionCard({
   adding, onCancelAdd, onSelectAdd,
   searchPlaceholder, searchHint,
   withGauge, buyLevels, krNames,
+  alertKeys, settings, onToggleAlert,
 }) {
   const [showNote, setShowNote] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -773,6 +881,9 @@ function SectionCard({
           )}
         </div>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {alertKeys && alertKeys.length > 0 && (
+            <BellToggle alertKeys={alertKeys} settings={settings} onChange={onToggleAlert} />
+          )}
           {onRefreshAll && tickers.length > 0 && !editMode && (
             <button
               className="icon-btn-sm"
@@ -781,28 +892,6 @@ function SectionCard({
               style={{ opacity: refreshing ? 0.4 : 1 }}
             >
               <RefreshIcon />
-            </button>
-          )}
-          {tickers.length > 0 && (
-            <button
-              className="icon-btn-sm"
-              onClick={() => setEditMode((v) => !v)}
-              title={editMode ? "편집 완료" : "순서·삭제 편집"}
-              style={{ color: editMode ? "var(--accent)" : undefined }}
-            >
-              <EditIcon />
-            </button>
-          )}
-          {!editMode && onAdd && (
-            <button
-              className="icon-btn"
-              onClick={onAdd}
-              disabled={addDisabled}
-              title="추가"
-              style={{ flexShrink: 0 }}
-            >
-              <PlusIcon />
-              {addLabel && <span style={{ fontSize: 10, marginLeft: 3 }}>{addLabel}</span>}
             </button>
           )}
         </div>
@@ -849,6 +938,31 @@ function SectionCard({
           />
         ))}
       </div>
+
+      {!adding && (
+        <div className="section-foot-actions">
+          {tickers.length > 0 && (
+            <button
+              className="btn-ghost section-foot-btn"
+              onClick={() => setEditMode((v) => !v)}
+              style={{ color: editMode ? "var(--accent)" : undefined }}
+            >
+              <EditIcon />
+              <span>{editMode ? "완료" : "편집"}</span>
+            </button>
+          )}
+          {!editMode && onAdd && (
+            <button
+              className="btn-ghost section-foot-btn"
+              onClick={onAdd}
+              disabled={addDisabled}
+            >
+              <PlusIcon />
+              <span>추가{addLabel ? ` ${addLabel}` : ""}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {!editMode && adding && (
         <div style={{ marginTop: 12 }}>
@@ -970,6 +1084,15 @@ export default function Dashboard({ profile, flash }) {
     } catch {}
   }
 
+  /* 알림 on/off 플래그 (대시보드 종 토글 → settings 즉시 저장) */
+  async function setAlertFlag(patch) {
+    setSettings((prev) => ({ ...prev, ...patch }));
+    await supabase
+      .from("settings")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("user_id", uid);
+  }
+
   /* sort_order DB 저장 */
   async function saveOrder(table, newSymbols) {
     await Promise.all(newSymbols.map((sym, i) =>
@@ -1079,6 +1202,12 @@ export default function Dashboard({ profile, flash }) {
         withGauge
         buyLevels={settings?.drawdown_levels ?? [10, 20, 30, 40]}
         krNames={krNames}
+        settings={settings}
+        onToggleAlert={setAlertFlag}
+        alertKeys={[
+          { key: "enable_buy_levels", label: "매수 (ATH 대비 하락)" },
+          { key: "enable_sell_signals", label: "매도 (ATH 도달·초과 상승)" },
+        ]}
       />
 
       {/* ② 기술적 매수∙매도신호 알림 */}
@@ -1100,6 +1229,13 @@ export default function Dashboard({ profile, flash }) {
         searchPlaceholder="예: QQQ, 069500"
         searchHint="DMI·거래량 보조지표 계산에 사용할 티커. 최대 50개."
         krNames={krNames}
+        settings={settings}
+        onToggleAlert={setAlertFlag}
+        alertKeys={[
+          { key: "enable_buy_indicators", label: "DMI 매수신호" },
+          { key: "enable_divergence", label: "다이버전스 (예외 매수·매도)" },
+          { key: "enable_volume_signal", label: "대량거래 돌파 (예외 매수·매도)" },
+        ]}
       />
 
       {/* ③ 개별주식 DMI 매수신호 알림 */}
@@ -1121,6 +1257,11 @@ export default function Dashboard({ profile, flash }) {
         searchPlaceholder="예: 삼성전자, 005930, KODEX"
         searchHint="개별주식 종목명 또는 6자리 코드로 검색. 최대 50개."
         krNames={krNames}
+        settings={settings}
+        onToggleAlert={setAlertFlag}
+        alertKeys={[
+          { key: "enable_watchlist", label: "개별주식 DMI 매수신호" },
+        ]}
       />
 
       <p className="hint" style={{ textAlign: "center", marginTop: 4, fontSize: 11 }}>
