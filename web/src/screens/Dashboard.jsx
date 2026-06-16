@@ -549,9 +549,12 @@ export default function Dashboard({ profile, flash }) {
     } catch {}
   }
 
-  /* 섹션 내 모든 티커 ATH 재계산 */
-  async function initAthAll(tickers) {
-    await Promise.all(tickers.map(initAth));
+  /* 섹션 새로고침: ATH 재계산 + 현재가 갱신 */
+  async function initAthAll(sectionTickers) {
+    await Promise.all([
+      ...sectionTickers.map(initAth),
+      refreshQuotes(indexTickers, indicatorTickers, watchlist),
+    ]);
   }
 
   /* 티커 추가 시 종목명 DB에도 저장 */
