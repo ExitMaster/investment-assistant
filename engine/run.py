@@ -200,19 +200,30 @@ def run_intraday():
                 rebuilt = build_ath_from_history(closes, reset_pct=reset_pct) if closes else None
                 if rebuilt is not None:
                     obj = rebuilt
-            if is_new_day:
+            # 한 레벨은 같은 ATH 구간에서 1회만 발화. ATH가 위로 갱신되면 전 레벨 재무장.
+            # (매 거래일이 아니라 ATH 갱신을 기준으로 상태를 리셋한다 — 회복 후 재돌파 중복 알림 방지)
+            prev_ath = saved.get("ath") if saved else None
+            ath_advanced = (prev_ath is None) or (obj.ath > prev_ath + 1e-9)
+
+            if saved is None:
+                # 최초 등록: 이미 도달한 레벨은 알림 억제(baseline), 이후 더 깊은 레벨부터 알림
                 dd_now = obj.drawdown_pct(price)
                 baseline_level = deepest_level(dd_now, levels)
                 active_levels = []
                 level_last_alert = {}
-                # 매도 baseline: 당일 시작 시 이미 활성인 매도 레벨 기록
                 gain_now = obj.gain_pct(price)
                 sell_baseline = -1
                 for L in sorted(SELL_LEVELS):
                     if gain_now >= L:
                         sell_baseline = L
                 level_last_alert["sell_baseline"] = sell_baseline
+            elif ath_advanced:
+                # 전고점(ATH)이 새로 확정되어 위로 갱신됨 → 모든 매수/매도 레벨 재발화 허용
+                baseline_level = 0
+                active_levels = []
+                level_last_alert = {"sell_baseline": -1}
             else:
+                # 같은 ATH 구간: 직전 상태 유지 (이미 알린 레벨은 재발화 안 함)
                 baseline_level = saved.get("baseline_level", 0)
                 active_levels = list(saved.get("active_levels", []))
                 level_last_alert = dict(saved.get("level_last_alert", {}))
