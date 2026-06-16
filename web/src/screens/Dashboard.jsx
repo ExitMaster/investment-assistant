@@ -59,8 +59,8 @@ const GearIcon = () => (
 
 /* ── 지수 전광판 기본 심볼 ── */
 const DEFAULT_MARQUEE = [
-  { symbol: "^GSPC",    label: "S&P500" },
   { symbol: "^IXIC",    label: "NASDAQ" },
+  { symbol: "^GSPC",    label: "S&P500" },
   { symbol: "^DJI",     label: "DOW" },
   { symbol: "^KS11",    label: "KOSPI" },
   { symbol: "^KQ11",    label: "KOSDAQ" },
@@ -205,7 +205,7 @@ export function MarqueeTape({ uid }) {
       </div>
 
       {showPanel && (
-        <div className="marquee-panel-wrap"><div className="marquee-panel">
+        <div className="marquee-panel">
           <p className="marquee-panel-title">지수 전광판 설정 · 드래그로 순서 변경</p>
           {items.map((item, i) => (
             <div
@@ -248,7 +248,7 @@ export function MarqueeTape({ uid }) {
             />
             <button className="btn-ghost" style={{ fontSize: 12 }} onClick={addCustom}>추가</button>
           </div>
-        </div></div>
+        </div>
       )}
     </>
   );
@@ -307,7 +307,7 @@ function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
 }
 
 /* ── 티커 한 행 ── */
-function TickerRow({ sym, quotes, athMap, onRemove, onRefreshAth }) {
+function TickerRow({ sym, quotes, athMap, onRemove }) {
   const q = quotes[sym];
   const athRow = athMap[sym];
   const ath = athRow?.ath ?? null;
@@ -348,9 +348,6 @@ function TickerRow({ sym, quotes, athMap, onRemove, onRefreshAth }) {
       </div>
 
       <div className="t-actions">
-        {onRefreshAth && (
-          <button className="icon-btn-sm" onClick={() => onRefreshAth(sym)} title="ATH 재계산"><RefreshIcon /></button>
-        )}
         {onRemove && (
           <button className="icon-btn-sm danger" onClick={() => onRemove(sym)} title="삭제"><XIcon /></button>
         )}
@@ -363,12 +360,21 @@ function TickerRow({ sym, quotes, athMap, onRemove, onRefreshAth }) {
 function SectionCard({
   title, note,
   tickers, quotes, athMap,
-  onRemove, onRefreshAth,
+  onRemove, onRefreshAll,
   onAdd, addDisabled, addLabel,
   adding, onCancelAdd, onSelectAdd,
   searchPlaceholder, searchHint,
 }) {
   const [showNote, setShowNote] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function handleRefreshAll() {
+    if (!onRefreshAll || refreshing) return;
+    setRefreshing(true);
+    await onRefreshAll(tickers);
+    setRefreshing(false);
+  }
+
   return (
     <div className="card">
       <div className="section-header">
@@ -385,18 +391,30 @@ function SectionCard({
             </button>
           )}
         </div>
-        {onAdd && (
-          <button
-            className="icon-btn"
-            onClick={onAdd}
-            disabled={addDisabled}
-            title="추가"
-            style={{ flexShrink: 0 }}
-          >
-            <PlusIcon />
-            {addLabel && <span style={{ fontSize: 10, marginLeft: 3 }}>{addLabel}</span>}
-          </button>
-        )}
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {onRefreshAll && tickers.length > 0 && (
+            <button
+              className="icon-btn-sm"
+              onClick={handleRefreshAll}
+              title="ATH 전체 재계산"
+              style={{ opacity: refreshing ? 0.4 : 1 }}
+            >
+              <RefreshIcon />
+            </button>
+          )}
+          {onAdd && (
+            <button
+              className="icon-btn"
+              onClick={onAdd}
+              disabled={addDisabled}
+              title="추가"
+              style={{ flexShrink: 0 }}
+            >
+              <PlusIcon />
+              {addLabel && <span style={{ fontSize: 10, marginLeft: 3 }}>{addLabel}</span>}
+            </button>
+          )}
+        </div>
       </div>
       {showNote && note && <p className="section-note">{note}</p>}
 
@@ -413,7 +431,6 @@ function SectionCard({
           quotes={quotes}
           athMap={athMap}
           onRemove={onRemove}
-          onRefreshAth={onRefreshAth}
         />
       ))}
 
@@ -518,6 +535,11 @@ export default function Dashboard({ profile, flash }) {
     } catch {}
   }
 
+  /* 섹션 내 모든 티커 ATH 재계산 */
+  async function initAthAll(tickers) {
+    await Promise.all(tickers.map(initAth));
+  }
+
   /* 티커 추가 시 종목명 DB에도 저장 */
   async function saveTickerName(table, ticker, name) {
     if (!name || name === ticker) return;
@@ -527,7 +549,7 @@ export default function Dashboard({ profile, flash }) {
   /* ── ATH 대비 하락율∙매도 알림 티커 ── */
   async function addIndexTicker(item) {
     const t = item.symbol;
-    if (indexTickers.length >= 5) { flash("ATH 감시는 최대 5개까지 추가할 수 있습니다"); return; }
+    if (indexTickers.length >= 10) { flash("ATH 감시는 최대 10개까지 추가할 수 있습니다"); return; }
     if (indexTickers.includes(t)) { setAddingTo(null); return; }
     const { error } = await supabase.from("index_tickers").insert({ user_id: uid, ticker: t, name: item.name || null });
     if (error) { flash("추가 실패: " + error.message); return; }
@@ -599,15 +621,15 @@ export default function Dashboard({ profile, flash }) {
         quotes={quotes}
         athMap={athMap}
         onRemove={removeIndexTicker}
-        onRefreshAth={initAth}
+        onRefreshAll={initAthAll}
         onAdd={() => setAddingTo("ath")}
-        addDisabled={indexTickers.length >= 5}
-        addLabel={`${indexTickers.length}/5`}
+        addDisabled={indexTickers.length >= 10}
+        addLabel={`${indexTickers.length}/10`}
         adding={addingTo === "ath"}
         onCancelAdd={() => setAddingTo(null)}
         onSelectAdd={addIndexTicker}
         searchPlaceholder="예: QQQ, SPY, 069500"
-        searchHint="ATH 대비 하락율∙매도 신호를 계산할 지수 티커. 최대 5개."
+        searchHint="ATH 대비 하락율∙매도 신호를 계산할 지수 티커. 최대 10개."
       />
 
       {/* ② 기술적 매수∙매도신호 알림 */}
@@ -618,6 +640,7 @@ export default function Dashboard({ profile, flash }) {
         quotes={quotes}
         athMap={athMap}
         onRemove={removeIndicatorTicker}
+        onRefreshAll={initAthAll}
         onAdd={() => setAddingTo("indicator")}
         addDisabled={indicatorTickers.length >= 50}
         addLabel={`${indicatorTickers.length}/50`}
@@ -628,14 +651,15 @@ export default function Dashboard({ profile, flash }) {
         searchHint="DMI·거래량 보조지표 계산에 사용할 티커. 최대 50개."
       />
 
-      {/* ③ 국내주식 DMI 매수신호 알림 */}
+      {/* ③ 개별주식 DMI 매수신호 알림 */}
       <SectionCard
-        title="국내주식 DMI 매수신호 알림"
-        note="개별 종목 DMI 매수신호 감시 · 한국어 종목명 또는 6자리 코드로 검색"
+        title="개별주식 DMI 매수신호 알림"
+        note="개별주식 DMI 매수신호 감시 · 종목명 또는 6자리 코드로 검색"
         tickers={watchlist}
         quotes={quotes}
         athMap={athMap}
         onRemove={removeWatchTicker}
+        onRefreshAll={initAthAll}
         onAdd={() => setAddingTo("watchlist")}
         addDisabled={watchlist.length >= 50}
         addLabel={`${watchlist.length}/50`}
@@ -643,7 +667,7 @@ export default function Dashboard({ profile, flash }) {
         onCancelAdd={() => setAddingTo(null)}
         onSelectAdd={addWatchTicker}
         searchPlaceholder="예: 삼성전자, 005930, KODEX"
-        searchHint="국내 주식 종목명 또는 6자리 코드로 검색. 최대 50개."
+        searchHint="개별주식 종목명 또는 6자리 코드로 검색. 최대 50개."
       />
 
       <p className="hint" style={{ textAlign: "center", marginTop: 4, fontSize: 11 }}>

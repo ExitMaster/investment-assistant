@@ -104,51 +104,52 @@ export default function App() {
   return (
     <div className="app-wrap">
       <div className="topbar">
-        <div className="brand" onClick={() => setScreen("dashboard")}>
-          Investment Assistant
-        </div>
-        <div className="topbar-actions">
-          <button
-            className={`icon-btn ${screen === "alerts" ? "active" : ""}`}
-            onClick={() => setScreen("alerts")}
-            title="알림"
-          >
-            <BellIcon />
-          </button>
-          <button
-            className={`icon-btn ${screen === "settings" ? "active" : ""}`}
-            onClick={() => setScreen("settings")}
-            title="설정"
-          >
-            <GearIcon />
-          </button>
-          <button
-            className="icon-btn"
-            onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-            title={theme === "dark" ? "밝은 모드로 전환" : "다크 모드로 전환"}
-          >
-            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-          </button>
-          {isAdmin && (
+        <div className="topbar-row">
+          <div className="brand" onClick={() => setScreen("dashboard")}>
+            Investment Assistant
+          </div>
+          <div className="topbar-actions">
             <button
-              className={`icon-btn ${screen === "admin" ? "active" : ""}`}
-              onClick={() => setScreen("admin")}
-              title="관리자"
+              className={`icon-btn ${screen === "alerts" ? "active" : ""}`}
+              onClick={() => setScreen("alerts")}
+              title="알림"
             >
-              <ShieldIcon />
+              <BellIcon />
             </button>
-          )}
-          <button
-            className="icon-btn"
-            onClick={() => supabase.auth.signOut()}
-            title="로그아웃"
-          >
-            <LogoutIcon />
-          </button>
+            <button
+              className={`icon-btn ${screen === "settings" ? "active" : ""}`}
+              onClick={() => setScreen("settings")}
+              title="설정"
+            >
+              <GearIcon />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+              title={theme === "dark" ? "밝은 모드로 전환" : "다크 모드로 전환"}
+            >
+              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+            </button>
+            {isAdmin && (
+              <button
+                className={`icon-btn ${screen === "admin" ? "active" : ""}`}
+                onClick={() => setScreen("admin")}
+                title="관리자"
+              >
+                <ShieldIcon />
+              </button>
+            )}
+            <button
+              className="icon-btn"
+              onClick={() => supabase.auth.signOut()}
+              title="로그아웃"
+            >
+              <LogoutIcon />
+            </button>
+          </div>
         </div>
+        <MarqueeTape uid={profile.id} />
       </div>
-
-      <MarqueeTape uid={profile.id} />
 
       <div className="screen-content">
         {screen === "dashboard" && (
