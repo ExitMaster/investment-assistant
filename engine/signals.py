@@ -2,7 +2,10 @@
 ATH ratchet 상태를 과거 종가 시리즈로부터 구축/갱신하는 헬퍼,
 그리고 매수/매도 신호 판정 로직.
 """
-from indicators import AthRatchet, wilder_dmi, stochastics_slow, volume_spike, dmi_buy_signal
+from indicators import (
+    AthRatchet, wilder_dmi, stochastics_slow, volume_spike, dmi_buy_signal,
+    dmi_imminent, bullish_divergence, bearish_divergence, volume_breakout,
+)
 
 
 def build_ath_from_history(closes, reset_pct=10.0):
@@ -75,9 +78,11 @@ def evaluate_indicators(df, settings):
     out = {}
     high, low, close, vol = df["High"], df["Low"], df["Close"], df["Volume"]
 
+    thr = settings.get("dmi_threshold", 30)
     pdi, mdi, adx = wilder_dmi(high, low, close)
-    buy = dmi_buy_signal(mdi, adx, threshold=settings.get("dmi_threshold", 30))
+    buy = dmi_buy_signal(mdi, adx, threshold=thr)
     out["dmi_buy"] = bool(buy.iloc[-1]) if len(buy) else False
+    out["dmi_imminent"] = dmi_imminent(mdi, adx, threshold=thr)
     out["dmi_values"] = {
         "plus_di": round(float(pdi.iloc[-1]), 1),
         "minus_di": round(float(mdi.iloc[-1]), 1),
@@ -91,5 +96,19 @@ def evaluate_indicators(df, settings):
     lookback = settings.get("volume_lookback_days", 126)
     vspike = volume_spike(vol, lookback=lookback)
     out["volume_spike"] = bool(vspike.iloc[-1]) if len(vspike) else False
+
+    # 다이버전스 (Stochastics Slow %K 기준)
+    bull, bull_v = bullish_divergence(low, k)
+    bear, bear_v = bearish_divergence(high, k)
+    out["bull_div"] = bull
+    out["bull_div_values"] = bull_v
+    out["bear_div"] = bear
+    out["bear_div_values"] = bear_v
+
+    # 저점/고점 대량거래 돌파 (3영업일 확정)
+    vb = volume_breakout(df, lookback=lookback)
+    out["low_vol_breakout"] = vb["low_vol"]
+    out["high_vol_breakout"] = vb["high_vol"]
+    out["vol_ratio"] = vb["vol_ratio"]
 
     return out

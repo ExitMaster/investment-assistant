@@ -119,14 +119,38 @@ def format_sell(ticker, level, price, ath, gain, name=None, cash_target=None):
 
 
 def format_indicator(ticker, signals, name=None):
+    """매수 계열 보조지표 신호. 발생한 항목이 없으면 None."""
     disp = _ticker_display(ticker, name)
-    lines = [f"📊 <b>{disp} 보조지표 신호</b>"]
+    v = signals.get("dmi_values", {})
+    lines = []
     if signals.get("dmi_buy"):
-        v = signals["dmi_values"]
-        lines.append(f"• DMI 매수신호 (DI-={v['minus_di']}, ADX={v['adx']})")
-    if signals.get("volume_spike"):
-        lines.append("• 저점 대량거래 발생")
-    return "\n".join(lines)
+        lines.append(f"• DMI 매수신호 (DI-={v.get('minus_di')}, ADX={v.get('adx')})")
+    if signals.get("dmi_imminent"):
+        lines.append(f"• DMI 매수신호 임박 (DI-={v.get('minus_di')} ≳ ADX={v.get('adx')})")
+    if signals.get("bull_div"):
+        bv = signals.get("bull_div_values") or {}
+        lines.append(f"• 상승 다이버전스 (%K {bv.get('k1')}→{bv.get('k2')} 상향)")
+    if signals.get("low_vol_breakout"):
+        r = signals.get("vol_ratio")
+        lines.append(f"• 저점 대량거래 돌파{f' (거래량 x{r})' if r else ''}")
+    if not lines:
+        return None
+    return f"📊 <b>{disp} 매수 보조지표</b>\n" + "\n".join(lines)
+
+
+def format_sell_indicator(ticker, signals, name=None):
+    """매도 계열 보조지표 예외 신호. 발생한 항목이 없으면 None."""
+    disp = _ticker_display(ticker, name)
+    lines = []
+    if signals.get("bear_div"):
+        bv = signals.get("bear_div_values") or {}
+        lines.append(f"• 하락 다이버전스 (%K {bv.get('k1')}→{bv.get('k2')} 하향)")
+    if signals.get("high_vol_breakout"):
+        r = signals.get("vol_ratio")
+        lines.append(f"• 고점 대량거래 이탈{f' (거래량 x{r})' if r else ''}")
+    if not lines:
+        return None
+    return f"📉 <b>{disp} 매도 보조지표</b>\n" + "\n".join(lines)
 
 
 def format_watchlist(ticker, signals, name=None):

@@ -340,6 +340,10 @@ def run_indicators():
         alert_times = st.get("indicator_alert_times") or []
         now_utc = datetime.now(timezone.utc)
 
+        div_on = bool(st.get("enable_divergence", True))
+        vol_on = bool(st.get("enable_volume_signal", True))
+        sell_on = bool(st.get("enable_sell_signals", True))
+
         if st.get("enable_buy_indicators", True):
             ind_rows = db.get_indicator_tickers(uid)
             if not ind_rows and st.get("indicator_ticker"):
@@ -351,16 +355,33 @@ def run_indicators():
                     print(f"  [indicators] {tkr}: skip (시각 불일치)")
                     continue
                 df = hist(tkr)
-                if df is not None and len(df) > 30:
-                    sig = evaluate_indicators(df, st)
-                    if sig["dmi_buy"] or sig["volume_spike"]:
-                        msg = notify.format_indicator(tkr, sig, name=tname)
-                        if notify.send_message(chat, msg):
-                            db.insert_alert({
-                                "user_id": uid, "ticker": tkr, "kind": "buy_indicator",
-                                "level": "DMI/Vol", "message": msg,
-                                "price": float(df["Close"].iloc[-1]), "ath": None,
-                            })
+                if df is None or len(df) <= 30:
+                    continue
+                sig = evaluate_indicators(df, st)
+                px = float(df["Close"].iloc[-1])
+
+                # 토글로 끈 신호는 제외
+                if not div_on:
+                    sig["bull_div"] = sig["bear_div"] = False
+                if not vol_on:
+                    sig["low_vol_breakout"] = sig["high_vol_breakout"] = False
+
+                # 매수 계열
+                msg = notify.format_indicator(tkr, sig, name=tname)
+                if msg and notify.send_message(chat, msg):
+                    db.insert_alert({
+                        "user_id": uid, "ticker": tkr, "kind": "buy_indicator",
+                        "level": "보조지표", "message": msg, "price": px, "ath": None,
+                    })
+
+                # 매도 계열 예외 (하락 다이버전스 / 고점 대량거래)
+                if sell_on:
+                    smsg = notify.format_sell_indicator(tkr, sig, name=tname)
+                    if smsg and notify.send_message(chat, smsg):
+                        db.insert_alert({
+                            "user_id": uid, "ticker": tkr, "kind": "sell_indicator",
+                            "level": "보조지표", "message": smsg, "price": px, "ath": None,
+                        })
 
         if st.get("enable_watchlist", True):
             for row in db.get_watchlist(uid):
@@ -382,11 +403,47 @@ def run_indicators():
                         })
 
 
+# ============================================================
+# 간이 백테스트: 보조지표 신호가 과거에 언제 떴는지 출력
+# ============================================================
+def run_backtest(ticker, period="2y"):
+    df = get_daily_history(ticker, period=period)
+    if df is None or len(df) < 80:
+        print(f"[backtest] {ticker}: 데이터 부족")
+        return
+    df = df.reset_index(drop=False)
+    dates = df.iloc[:, 0]
+    st = {}  # 기본 설정
+    print(f"[backtest] {ticker} · {len(df)}봉 · 보조지표 신호 발생일")
+    hits = 0
+    for i in range(70, len(df)):
+        sub = df.iloc[:i + 1]
+        sig = evaluate_indicators(sub, st)
+        tags = []
+        if sig["dmi_buy"]: tags.append("DMI매수")
+        if sig["dmi_imminent"]: tags.append("DMI임박")
+        if sig["bull_div"]: tags.append("상승다이버전스")
+        if sig["low_vol_breakout"]: tags.append("저점대량거래")
+        if sig["bear_div"]: tags.append("하락다이버전스")
+        if sig["high_vol_breakout"]: tags.append("고점대량거래")
+        if tags:
+            hits += 1
+            d = dates.iloc[i]
+            ds = d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10]
+            print(f"  {ds}  px={float(sub['Close'].iloc[-1]):.2f}  {', '.join(tags)}")
+    print(f"[backtest] 총 {hits}건")
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "intraday"
     if mode == "intraday":
         run_intraday()
     elif mode == "indicators":
         run_indicators()
+    elif mode == "backtest":
+        if len(sys.argv) < 3:
+            print("usage: python run.py backtest <TICKER> [period]")
+        else:
+            run_backtest(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "2y")
     else:
         print(f"unknown mode: {mode}")
