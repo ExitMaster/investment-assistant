@@ -19,10 +19,12 @@ function displaySym(sym) { return sym.replace(/\.(KS|KQ)$/, ""); }
 function fmtPrice(v, sym, showCurrency = false) {
   if (v == null) return null;
   const kr = isKR(sym);
+  const isIdx = /^\^/.test(sym) || sym.includes("=X");  // 지수·환율은 통화 표기 없음
   const formatted = kr
     ? Math.round(v).toLocaleString("ko-KR")
     : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return showCurrency ? `${kr ? "KRW" : "USD"} ${formatted}` : formatted;
+  if (!showCurrency || isIdx) return formatted;
+  return `${kr ? "KRW" : "USD"} ${formatted}`;
 }
 
 /* ── SVG 아이콘 ── */
