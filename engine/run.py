@@ -189,18 +189,21 @@ def run_indicators():
 
         # 지수 보조지표
         if st.get("enable_buy_indicators", True):
-            tkr = st.get("indicator_ticker", st["index_ticker"])
-            df = hist(tkr)
-            if df is not None and len(df) > 30:
-                sig = evaluate_indicators(df, st)
-                if sig["dmi_buy"] or sig["volume_spike"]:
-                    msg = notify.format_indicator(tkr, sig)
-                    if notify.send_message(chat, msg):
-                        db.insert_alert({
-                            "user_id": uid, "ticker": tkr, "kind": "buy_indicator",
-                            "level": "DMI/Vol", "message": msg,
-                            "price": float(df["Close"].iloc[-1]), "ath": None,
-                        })
+            ind_tickers = db.get_indicator_tickers(uid)
+            if not ind_tickers and st.get("indicator_ticker"):
+                ind_tickers = [st["indicator_ticker"]]
+            for tkr in ind_tickers:
+                df = hist(tkr)
+                if df is not None and len(df) > 30:
+                    sig = evaluate_indicators(df, st)
+                    if sig["dmi_buy"] or sig["volume_spike"]:
+                        msg = notify.format_indicator(tkr, sig)
+                        if notify.send_message(chat, msg):
+                            db.insert_alert({
+                                "user_id": uid, "ticker": tkr, "kind": "buy_indicator",
+                                "level": "DMI/Vol", "message": msg,
+                                "price": float(df["Close"].iloc[-1]), "ath": None,
+                            })
 
         # 개별주식 watchlist
         if st.get("enable_watchlist", True):

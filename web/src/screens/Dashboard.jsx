@@ -218,34 +218,37 @@ export default function Dashboard({ profile, flash }) {
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState(null);
 
-  const [addingTo, setAddingTo] = useState(null); // 'ath' | 'watchlist' | null
-  const [editingIndicator, setEditingIndicator] = useState(false);
+  const [addingTo, setAddingTo] = useState(null); // 'ath' | 'indicator' | 'watchlist' | null
+  const [indicatorTickers, setIndicatorTickers] = useState([]);
 
   const uid = profile.id;
 
   const loadAll = useCallback(async () => {
-    const [{ data: st }, { data: ix }, { data: wl }, { data: aths }] =
+    const [{ data: st }, { data: ix }, { data: ind }, { data: wl }, { data: aths }] =
       await Promise.all([
         supabase.from("settings").select("*").eq("user_id", uid).single(),
         supabase.from("index_tickers").select("ticker").eq("user_id", uid),
+        supabase.from("indicator_tickers").select("ticker").eq("user_id", uid),
         supabase.from("watchlist").select("ticker").eq("user_id", uid),
         supabase.from("ath_state").select("*").eq("user_id", uid),
       ]);
     setSettings(st);
     const ixList = (ix ?? []).map((r) => r.ticker);
+    const indList = (ind ?? []).map((r) => r.ticker);
     const wlList = (wl ?? []).map((r) => r.ticker);
     setIndexTickers(ixList);
+    setIndicatorTickers(indList);
     setWatchlist(wlList);
     const m = {};
     (aths ?? []).forEach((r) => { m[r.ticker] = r; });
     setAthMap(m);
-    return { st, ixList, wlList };
+    return { st, ixList, indList, wlList };
   }, [uid]);
 
-  const refreshQuotes = useCallback(async (st, ixList, wlList) => {
+  const refreshQuotes = useCallback(async (ixList, indList, wlList) => {
     const syms = new Set([
       ...(ixList ?? []),
-      ...(st?.indicator_ticker ? [st.indicator_ticker] : []),
+      ...(indList ?? []),
       ...(wlList ?? []),
     ]);
     if (syms.size === 0) return;
@@ -257,8 +260,8 @@ export default function Dashboard({ profile, flash }) {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { st, ixList, wlList } = await loadAll();
-      await refreshQuotes(st, ixList, wlList);
+      const { ixList, indList, wlList } = await loadAll();
+      await refreshQuotes(ixList, indList, wlList);
       setLoading(false);
     })();
   }, [loadAll, refreshQuotes]);
@@ -266,11 +269,11 @@ export default function Dashboard({ profile, flash }) {
   useEffect(() => {
     if (loading) return;
     const id = setInterval(
-      () => refreshQuotes(settings, indexTickers, watchlist),
+      () => refreshQuotes(indexTickers, indicatorTickers, watchlist),
       30000
     );
     return () => clearInterval(id);
-  }, [loading, settings, indexTickers, watchlist, refreshQuotes]);
+  }, [loading, indexTickers, indicatorTickers, watchlist, refreshQuotes]);
 
   /* ── ATH 감시 티커 추가/삭제 ── */
   async function addIndexTicker(item) {
@@ -288,41 +291,36 @@ export default function Dashboard({ profile, flash }) {
     setIndexTickers(next);
     setAddingTo(null);
     flash(`${t} 추가됨`);
-    refreshQuotes(settings, next, watchlist);
+    refreshQuotes(next, indicatorTickers, watchlist);
   }
   async function removeIndexTicker(t) {
-    await supabase
-      .from("index_tickers")
-      .delete()
-      .eq("user_id", uid)
-      .eq("ticker", t);
+    await supabase.from("index_tickers").delete().eq("user_id", uid).eq("ticker", t);
     const next = indexTickers.filter((x) => x !== t);
     setIndexTickers(next);
     flash(`${t} 삭제됨`);
   }
 
-  /* ── 기술적 매수신호 티커 변경 ── */
-  async function updateIndicatorTicker(item) {
+  /* ── 기술적 매수신호 티커 추가/삭제 ── */
+  async function addIndicatorTicker(item) {
     const t = item.symbol;
-    const { error } = await supabase
-      .from("settings")
-      .update({ indicator_ticker: t })
-      .eq("user_id", uid);
-    if (error) { flash("저장 실패: " + error.message); return; }
-    const nextSt = { ...settings, indicator_ticker: t };
-    setSettings(nextSt);
-    setEditingIndicator(false);
-    flash(`기술적 매수신호 티커 → ${t}`);
-    refreshQuotes(nextSt, indexTickers, watchlist);
+    if (indicatorTickers.length >= 30) {
+      flash("기술적 매수신호 감시는 최대 30개까지 추가할 수 있습니다");
+      return;
+    }
+    if (indicatorTickers.includes(t)) { setAddingTo(null); return; }
+    const { error } = await supabase.from("indicator_tickers").insert({ user_id: uid, ticker: t });
+    if (error) { flash("추가 실패: " + error.message); return; }
+    const next = [...indicatorTickers, t];
+    setIndicatorTickers(next);
+    setAddingTo(null);
+    flash(`${t} 추가됨`);
+    refreshQuotes(indexTickers, next, watchlist);
   }
-  async function removeIndicatorTicker() {
-    await supabase
-      .from("settings")
-      .update({ indicator_ticker: null })
-      .eq("user_id", uid);
-    const nextSt = { ...settings, indicator_ticker: null };
-    setSettings(nextSt);
-    flash("기술적 매수신호 티커 삭제됨");
+  async function removeIndicatorTicker(t) {
+    await supabase.from("indicator_tickers").delete().eq("user_id", uid).eq("ticker", t);
+    const next = indicatorTickers.filter((x) => x !== t);
+    setIndicatorTickers(next);
+    flash(`${t} 삭제됨`);
   }
 
   /* ── 국내주식 DMI 티커 추가/삭제 ── */
@@ -333,22 +331,16 @@ export default function Dashboard({ profile, flash }) {
       return;
     }
     if (watchlist.includes(t)) { setAddingTo(null); return; }
-    const { error } = await supabase
-      .from("watchlist")
-      .insert({ user_id: uid, ticker: t });
+    const { error } = await supabase.from("watchlist").insert({ user_id: uid, ticker: t });
     if (error) { flash("추가 실패: " + error.message); return; }
     const next = [...watchlist, t];
     setWatchlist(next);
     setAddingTo(null);
     flash(`${t} 추가됨`);
-    refreshQuotes(settings, indexTickers, next);
+    refreshQuotes(indexTickers, indicatorTickers, next);
   }
   async function removeWatchTicker(t) {
-    await supabase
-      .from("watchlist")
-      .delete()
-      .eq("user_id", uid)
-      .eq("ticker", t);
+    await supabase.from("watchlist").delete().eq("user_id", uid).eq("ticker", t);
     const next = watchlist.filter((x) => x !== t);
     setWatchlist(next);
     flash(`${t} 삭제됨`);
@@ -356,10 +348,6 @@ export default function Dashboard({ profile, flash }) {
 
   if (loading)
     return <div className="card"><p className="muted">불러오는 중…</p></div>;
-
-  const indicatorTickers = settings?.indicator_ticker
-    ? [settings.indicator_ticker]
-    : [];
 
   return (
     <>
@@ -390,14 +378,15 @@ export default function Dashboard({ profile, flash }) {
         tickers={indicatorTickers}
         quotes={quotes}
         athMap={athMap}
-        onRemove={indicatorTickers.length > 0 ? removeIndicatorTicker : null}
-        onEdit={indicatorTickers.length > 0 ? () => setEditingIndicator(true) : null}
-        onAdd={indicatorTickers.length === 0 ? () => setEditingIndicator(true) : null}
-        adding={editingIndicator}
-        onCancelAdd={() => setEditingIndicator(false)}
-        onSelectAdd={updateIndicatorTicker}
+        onRemove={removeIndicatorTicker}
+        onAdd={() => setAddingTo("indicator")}
+        addDisabled={indicatorTickers.length >= 30}
+        addLabel={`${indicatorTickers.length}/30`}
+        adding={addingTo === "indicator"}
+        onCancelAdd={() => setAddingTo(null)}
+        onSelectAdd={addIndicatorTicker}
         searchPlaceholder="예: QQQ, 069500"
-        searchHint="DMI·거래량 보조지표 계산에 사용할 티커. 1개."
+        searchHint="DMI·거래량 보조지표 계산에 사용할 티커. 최대 30개."
       />
 
       {/* ③ 국내주식 DMI 매수신호 알림 */}

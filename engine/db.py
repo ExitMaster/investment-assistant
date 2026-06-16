@@ -63,6 +63,14 @@ def get_index_tickers(user_id):
     return [r["ticker"] for r in (rows or [])]
 
 
+def get_indicator_tickers(user_id):
+    """indicator_tickers 테이블에서 사용자의 기술적 매수신호 티커 목록 반환."""
+    rows = _request("GET", "indicator_tickers", params={
+        "user_id": f"eq.{user_id}", "select": "ticker",
+    })
+    return [r["ticker"] for r in (rows or [])]
+
+
 def get_watchlist(user_id):
     rows = _request("GET", "watchlist", params={
         "user_id": f"eq.{user_id}", "select": "ticker",
