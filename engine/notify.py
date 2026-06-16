@@ -135,7 +135,7 @@ def format_indicator(ticker, signals, name=None):
         lines.append(f"• 저점 대량거래 돌파{f' (거래량 x{r})' if r else ''}")
     if not lines:
         return None
-    return f"📊 <b>{disp} 매수 보조지표</b>\n" + "\n".join(lines)
+    return f"📊 <b>{disp} 예외적 매수 신호</b>\n" + "\n".join(lines)
 
 
 def format_sell_indicator(ticker, signals, name=None):
@@ -150,7 +150,7 @@ def format_sell_indicator(ticker, signals, name=None):
         lines.append(f"• 고점 대량거래 이탈{f' (거래량 x{r})' if r else ''}")
     if not lines:
         return None
-    return f"📉 <b>{disp} 매도 보조지표</b>\n" + "\n".join(lines)
+    return f"📉 <b>{disp} 예외적 매도 신호</b>\n" + "\n".join(lines)
 
 
 def format_watchlist(ticker, signals, name=None):

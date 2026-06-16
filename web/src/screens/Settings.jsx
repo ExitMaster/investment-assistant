@@ -322,8 +322,10 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
         {[
           ["enable_buy_levels",     "ATH 대비 하락율∙매도 알림",    "ATH 대비 −N% 하락 및 ATH 도달/초과 매도 신호"],
           ["enable_sell_signals",   "ATH 대비 상승 매도 신호 알림", "ATH 도달 시 및 ATH 대비 매 10% 초과 상승 시"],
-          ["enable_buy_indicators", "기술적 매수∙매도신호 알림",    "DMI·스토캐스틱·거래량 기준 매수∙매도 신호"],
-          ["enable_watchlist",      "국내주식 DMI 매수신호 알림",   "개별 종목 DMI 매수신호 감시"],
+          ["enable_buy_indicators", "DMI 매수신호 알림",            "일봉 DMI에서 DI−가 ADX를 30선 위에서 하향 돌파(매수신호) 및 곧 돌파할 임박 상태"],
+          ["enable_divergence",     "다이버전스 (예외적 매수·매도)", "주가와 Stochastics Slow(5,3,3)의 저점/고점이 엇갈릴 때 · 상승 다이버전스=예외적 매수, 하락 다이버전스=예외적 매도 · 일봉"],
+          ["enable_volume_signal",  "대량거래 돌파 (예외적 매수·매도)", "최근 6개월 최대 거래량 봉을 3영업일 내 돌파/이탈 · 저점 봉 고가 돌파=예외적 매수, 고점 봉 저가 이탈=예외적 매도 · 일봉"],
+          ["enable_watchlist",      "개별주식 DMI 매수신호 알림",   "개별 종목 일봉 DMI 매수신호 감시"],
         ].map(([key, label, desc]) => (
           <div className="toggle-row" key={key}>
             <div>
