@@ -18,7 +18,8 @@ export default async function handler(req, res) {
     });
     if (!r.ok) { res.status(502).json({ error: "upstream" }); return; }
     const json = await r.json();
-    const quotes = (json?.finance?.result?.[0]?.quotes ?? []).map((item) => ({
+    const raw = json?.finance?.result?.[0]?.quotes ?? json?.quotes ?? [];
+    const quotes = raw.map((item) => ({
       symbol: item.symbol,
       name: item.longname || item.shortname || item.symbol,
       type: item.quoteType,
