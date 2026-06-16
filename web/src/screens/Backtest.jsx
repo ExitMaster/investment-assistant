@@ -4,21 +4,24 @@ import { runBacktest, SIGNAL_STYLE } from "../lib/signals.js";
 
 const RANGES = [
   { v: "1y", label: "1년" },
-  { v: "2y", label: "2년" },
+  { v: "3y", label: "3년" },
   { v: "5y", label: "5년" },
 ];
 
-// 신호 필터 그룹 (ATH는 매수/매도 분리, DMI는 매수만, 다이버전스·거래량은 양방향)
+// 신호 타입별 1:1 칩 (8종)
 const GROUPS = [
-  { key: "ath_buy",  label: "ATH 매수",   types: ["buy_level"],            color: "#22c55e" },
-  { key: "ath_sell", label: "ATH 매도",   types: ["sell"],                 color: "#ef4444" },
-  { key: "dmi",      label: "DMI 매수",   types: ["dmi_buy", "dmi_imminent"], color: "#3b82f6" },
-  { key: "stoch",    label: "스토캐스틱", types: ["bull_div", "bear_div"], color: "#14b8a6" },
-  { key: "vol",      label: "거래량 돌파", types: ["low_vol", "high_vol"],  color: "#a855f7" },
+  { key: "buy_level",    label: "ATH 매수",    color: "#22c55e" },
+  { key: "sell",         label: "ATH 매도",    color: "#ef4444" },
+  { key: "dmi_buy",      label: "DMI 매수",    color: "#3b82f6" },
+  { key: "dmi_imminent", label: "DMI 임박",    color: "#60a5fa" },
+  { key: "bull_div",     label: "상승 Div",    color: "#14b8a6" },
+  { key: "bear_div",     label: "하락 Div",    color: "#f97316" },
+  { key: "low_vol",      label: "저점 Vol",    color: "#a855f7" },
+  { key: "high_vol",     label: "고점 Vol",    color: "#eab308" },
 ];
 const ALL_KEYS = GROUPS.map((g) => g.key);
-const TYPE_TO_GROUP = {};
-GROUPS.forEach((g) => g.types.forEach((t) => (TYPE_TO_GROUP[t] = g.key)));
+// 타입 키와 그룹 키가 동일 (1:1)
+const TYPE_TO_GROUP = Object.fromEntries(ALL_KEYS.map((k) => [k, k]));
 
 function markersFor(events, enabled) {
   return events
@@ -33,7 +36,7 @@ export default function Backtest({ profile }) {
   const uid = profile.id;
   const [tickers, setTickers] = useState([]); // [{ticker,name}]
   const [ticker, setTicker] = useState("");
-  const [range, setRange] = useState("2y");
+  const [range, setRange] = useState("3y");
   const [settings, setSettings] = useState(null);
   const [data, setData] = useState(null); // history
   const [result, setResult] = useState(null); // {events, athSeries}
