@@ -182,8 +182,9 @@ export function runBacktest(data, settings = {}) {
   const { slowK } = stochSlow(high, low, close, sp[0], sp[1], sp[2]);
 
   const events = [];
-  const activeBuy = new Set();
-  const activeSell = new Set();
+  // ATH가 바뀌어야만 같은 레벨 재발화 허용 (엔진의 level_last_alert와 동일 로직)
+  const buyFiredAtAth = {};   // level → 마지막으로 발화한 ATH 값
+  const sellFiredAtAth = {};  // level → 마지막으로 발화한 ATH 값
 
   // 보조지표 신호 중복 억제 (false→true 전환 시에만)
   let prevDmiBuy = false, prevDmiImm = false, prevBull = false, prevBear = false, prevLowVol = false, prevHighVol = false;
@@ -195,24 +196,22 @@ export function runBacktest(data, settings = {}) {
     const dd = ((a - close[i]) / a) * 100; // 하락률(양수=하락)
     const gain = ((close[i] - a) / a) * 100; // ATH 초과 상승률
 
-    // 매수 레벨: 새로 진입할 때 1회, 회복하면 해제(재발화 허용)
+    // 매수 레벨: 동일 ATH에서 레벨당 1회만 (ATH가 바뀌면 재발화)
     for (const L of levels) {
-      if (dd >= L && !activeBuy.has(L)) {
-        activeBuy.add(L);
+      if (dd >= L && buyFiredAtAth[L] !== a) {
+        buyFiredAtAth[L] = a;
         events.push({
           time: time[i], type: "buy_level", price: close[i],
           label: `매수 -${L}%`,
           reason: `ATH 대비 -${L}% 도달 (현재 ${dd.toFixed(1)}%, ATH ${fmt(a)})`,
         });
-      } else if (dd < L && activeBuy.has(L)) {
-        activeBuy.delete(L);
       }
     }
 
-    // 매도 레벨: ATH 도달/초과
+    // 매도 레벨: 동일 ATH에서 레벨당 1회만 (ATH가 바뀌면 재발화)
     for (const L of sellLevels) {
-      if (gain >= L && !activeSell.has(L)) {
-        activeSell.add(L);
+      if (gain >= L && sellFiredAtAth[L] !== a) {
+        sellFiredAtAth[L] = a;
         events.push({
           time: time[i], type: "sell", price: close[i],
           label: L === 0 ? "매도 ATH" : `매도 +${L}%`,
@@ -220,8 +219,6 @@ export function runBacktest(data, settings = {}) {
             ? `ATH 도달 (ATH ${fmt(a)})`
             : `ATH 대비 +${L}% 초과 (현재 +${gain.toFixed(1)}%)`,
         });
-      } else if (gain < L && activeSell.has(L)) {
-        activeSell.delete(L);
       }
     }
 
