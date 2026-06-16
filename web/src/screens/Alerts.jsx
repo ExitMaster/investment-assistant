@@ -111,7 +111,6 @@ function MutePanel({ uid }) {
       <div className="toggle-row" style={{ marginTop: 0, borderBottom: "none" }}>
         <div>
           <div className="toggle-label">알림 전체 차단</div>
-          <div className="toggle-desc">켜면 모든 텔레그램 알림이 무기한 차단됩니다(타이머와 별개).</div>
         </div>
         <label className="switch">
           <input type="checkbox" checked={masterOff} onChange={(e) => saveMaster(e.target.checked)} />
