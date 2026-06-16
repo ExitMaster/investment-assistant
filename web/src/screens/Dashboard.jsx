@@ -497,7 +497,8 @@ function computeGauge(price, ath, prevClose, buyLevels) {
   // 남은 거리는 직전 장마감 종가 기준(증권사 등락률과 동일 기준)으로 계산
   const base = prevClose && prevClose > 0 ? prevClose : price;
 
-  let caption, capDir;
+  // 캡션: 라벨(무채색) + 거리값(등락 방향 색) 분리
+  let capLabel, capDist = null, capDir;
   if (c < 0) {
     const negs = buyLevels.map((L) => -L).sort((a, b) => b - a);   // -10,-20,…
     const deeper = negs.filter((L) => L < c - 0.001);
@@ -505,19 +506,21 @@ function computeGauge(price, ath, prevClose, buyLevels) {
       const next = deeper[0];                       // 도달할 다음 매수레벨(ATH 대비)
       const target = ath * (1 + next / 100);        // 그 레벨의 목표 가격
       const distPp = ((target - price) / base) * 100;  // 직전 종가 대비 추가 등락폭
-      caption = `다음 매수 ${next}% · ${distPp >= 0 ? "+" : ""}${distPp.toFixed(1)}%p`;
+      capLabel = `다음 매수 ${next}% ·`;
+      capDist = `${distPp >= 0 ? "+" : ""}${distPp.toFixed(1)}%p`;
     } else {
-      caption = "최대 매수레벨 도달";
+      capLabel = "최대 매수레벨 도달";
     }
     capDir = "down";
   } else {
     const next = Math.floor(c / 10) * 10 + 10;
     const target = ath * (1 + next / 100);
     const distPp = ((target - price) / base) * 100;
-    caption = `다음 매도 +${next}% · +${distPp.toFixed(1)}%p`;
+    capLabel = `다음 매도 +${next}% ·`;
+    capDist = `+${distPp.toFixed(1)}%p`;
     capDir = "up";
   }
-  return { c, lo, hi, marks, posOf, caption, capDir };
+  return { c, lo, hi, marks, posOf, capLabel, capDist, capDir };
 }
 
 function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
@@ -556,7 +559,14 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
       </div>
       <div className="gauge-foot">
         <span className="gauge-cur">현재 {fmtPrice(price, sym, true)} ({g.c >= 0 ? "+" : ""}{g.c.toFixed(1)}%)</span>
-        <span className="gauge-cap">{g.caption}</span>
+        <span className="gauge-cap">
+          {g.capLabel}
+          {g.capDist && (
+            <span style={{ color: g.capDir === "down" ? "var(--down)" : "var(--up)", marginLeft: 4 }}>
+              {g.capDist}
+            </span>
+          )}
+        </span>
       </div>
     </div>
   );
