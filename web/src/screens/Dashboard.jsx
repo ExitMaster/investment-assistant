@@ -78,53 +78,80 @@ function useDragSort(externalItems, onCommit) {
   const containerRef = useRef(null);
   const timer = useRef(null);
   const onCommitRef = useRef(onCommit);
-  const drag = useRef({ active: false, from: null, over: null, list: externalItems });
+  // 모든 가변 drag 상태를 ref에 보관 (stale closure 방지)
+  const drag = useRef({ active: false, from: null, over: null, startX: 0, startY: 0, list: externalItems });
 
   useEffect(() => { onCommitRef.current = onCommit; }, [onCommit]);
+  useEffect(() => { drag.current.list = externalItems; setList(externalItems); }, [externalItems]);
 
-  useEffect(() => {
-    drag.current.list = externalItems;
-    setList(externalItems);
-  }, [externalItems]);
+  function commit(from, to) {
+    if (from == null || to == null || from === to) return;
+    const next = [...drag.current.list];
+    const [x] = next.splice(from, 1);
+    next.splice(to, 0, x);
+    drag.current.list = next;
+    setList(next);
+    onCommitRef.current?.(next);
+  }
 
+  // 데스크톱 드래그
   function rowProps(idx) {
     return {
       draggable: true,
       "data-row-idx": String(idx),
       onDragStart: () => { drag.current.from = idx; setActiveIdx(idx); },
-      onDragOver: (e) => { e.preventDefault(); if (idx !== drag.current.from) { drag.current.over = idx; setOverIdx(idx); } },
+      onDragOver: (e) => {
+        e.preventDefault();
+        if (idx !== drag.current.from) { drag.current.over = idx; setOverIdx(idx); }
+      },
       onDrop: (e) => {
         e.preventDefault();
-        const { from, over, list: lst } = drag.current;
-        if (from != null && over != null && from !== over) {
-          const next = [...lst]; const [x] = next.splice(from, 1); next.splice(over, 0, x);
-          drag.current.list = next; setList(next); onCommitRef.current?.(next);
-        }
-        drag.current.from = null; drag.current.over = null; setActiveIdx(null); setOverIdx(null);
+        commit(drag.current.from, drag.current.over);
+        drag.current.from = null; drag.current.over = null;
+        setActiveIdx(null); setOverIdx(null);
       },
-      onDragEnd: () => { drag.current.from = null; drag.current.over = null; setActiveIdx(null); setOverIdx(null); },
+      onDragEnd: () => {
+        drag.current.from = null; drag.current.over = null;
+        setActiveIdx(null); setOverIdx(null);
+      },
     };
   }
 
+  // 모바일 핸들 터치 시작
   function handleProps(idx) {
     return {
-      onTouchStart: () => {
-        drag.current.from = null; drag.current.active = false;
+      onTouchStart: (e) => {
+        const t = e.touches[0];
+        drag.current.startX = t.clientX;
+        drag.current.startY = t.clientY;
+        drag.current.active = false;
+        drag.current.from = null;
+        drag.current.over = idx;
         timer.current = setTimeout(() => {
-          drag.current = { ...drag.current, active: true, from: idx, over: idx };
+          drag.current.active = true;
+          drag.current.from = idx;
+          drag.current.over = idx;
           setActiveIdx(idx);
+          setOverIdx(idx);
           try { navigator.vibrate(40); } catch {}
         }, 500);
       },
     };
   }
 
+  // 전역 터치 이벤트 (drag 중 스크롤 방지 + 타겟 행 감지)
   useEffect(() => {
     function onMove(e) {
-      clearTimeout(timer.current);
-      if (!drag.current.active) return;
-      e.preventDefault();
-      const y = e.touches[0].clientY;
+      const t = e.touches[0];
+      if (!drag.current.active) {
+        // 8px 이상 움직이면 long-press 취소 (스크롤 구분)
+        const dx = Math.abs(t.clientX - drag.current.startX);
+        const dy = Math.abs(t.clientY - drag.current.startY);
+        if (dx > 8 || dy > 8) clearTimeout(timer.current);
+        return;
+      }
+      e.preventDefault(); // 드래그 중 페이지 스크롤 방지
+      const y = t.clientY;
       containerRef.current?.querySelectorAll("[data-row-idx]").forEach(row => {
         const r = row.getBoundingClientRect();
         if (y >= r.top && y <= r.bottom) {
@@ -135,10 +162,8 @@ function useDragSort(externalItems, onCommit) {
     }
     function onEnd() {
       clearTimeout(timer.current);
-      const { active, from, over, list: lst } = drag.current;
-      if (active && from != null && over != null && from !== over) {
-        const next = [...lst]; const [x] = next.splice(from, 1); next.splice(over, 0, x);
-        drag.current.list = next; setList(next); onCommitRef.current?.(next);
+      if (drag.current.active) {
+        commit(drag.current.from, drag.current.over);
       }
       drag.current.active = false; drag.current.from = null; drag.current.over = null;
       setActiveIdx(null); setOverIdx(null);
@@ -151,7 +176,7 @@ function useDragSort(externalItems, onCommit) {
       document.removeEventListener("touchend", onEnd);
       document.removeEventListener("touchcancel", onEnd);
     };
-  }, []);
+  }, []); // ref만 사용하므로 deps 없음
 
   return { list, containerRef, activeIdx, overIdx, rowProps, handleProps };
 }
@@ -434,7 +459,12 @@ function TickerRow({ sym, quotes, athMap, onRemove, dragRowProps, dragHandleProp
   return (
     <div
       className="ticker-row"
-      style={{ opacity: isDragging ? 0.35 : 1, background: isDragOver ? "var(--bg-elev)" : undefined, borderRadius: isDragOver ? 6 : undefined }}
+      style={{
+        opacity: isDragging ? 0.3 : 1,
+        borderTop: isDragOver ? "2px solid var(--accent)" : undefined,
+        marginTop: isDragOver ? -1 : undefined,
+        transition: "opacity 0.15s",
+      }}
       {...(dragRowProps ?? {})}
     >
       <div className="drag-handle" title="길게 눌러 순서 변경" {...(dragHandleProps ?? {})}>
