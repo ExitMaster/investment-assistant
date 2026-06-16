@@ -74,21 +74,7 @@ export function MarqueeTape({ uid }) {
   const [showPanel, setShowPanel] = useState(false);
   const [addSym, setAddSym] = useState("");
   const [dragIdx, setDragIdx] = useState(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
   const timer = useRef(null);
-  const scrollRef = useRef(null);
-
-  function updateScrollState() {
-    const el = scrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 4);
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-  }
-
-  function scrollBy(dx) {
-    scrollRef.current?.scrollBy({ left: dx, behavior: "smooth" });
-  }
 
   // DB에서 marquee_tickers 로드 (없으면 기본값 삽입)
   useEffect(() => {
@@ -177,44 +163,43 @@ export function MarqueeTape({ uid }) {
 
   const visible = items.filter((i) => i.enabled);
 
-  // 가격 로드 후 스크롤 상태 업데이트
-  useEffect(() => { setTimeout(updateScrollState, 100); }, [prices, items]);
+  const itemEls = visible.map((item) => {
+    const q = prices[item.symbol];
+    const dayChg = q ? pct(q.price, q.prevClose) : null;
+    const chgClass = dayChg == null ? "neutral" : dayChg >= 0 ? "up" : "down";
+    return (
+      <div key={item.symbol} className="marquee-item">
+        <span className="marquee-label">{item.label}</span>
+        {q?.price != null ? (
+          <>
+            <span className={`marquee-price ${chgClass}`}>
+              {isKR(item.symbol)
+                ? Math.round(q.price).toLocaleString("ko-KR")
+                : q.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            {dayChg != null && (
+              <span className={`badge ${chgClass}`} style={{ fontSize: 10 }}>{fmtPct(dayChg)}</span>
+            )}
+          </>
+        ) : (
+          <span className="marquee-price" style={{ color: "var(--text-faint)" }}>—</span>
+        )}
+      </div>
+    );
+  });
+
+  // 아이템 수에 따라 속도 조정 (아이템 하나당 약 4초)
+  const duration = Math.max(12, visible.length * 4);
 
   return (
     <>
       <div className="marquee-wrap" style={{ position: "relative" }}>
-        {canScrollLeft && (
-          <button className="marquee-arrow marquee-arrow-left" onClick={() => scrollBy(-200)}>‹</button>
-        )}
-        <div className="marquee-scroll" ref={scrollRef} onScroll={updateScrollState}>
-          {visible.map((item) => {
-            const q = prices[item.symbol];
-            const dayChg = q ? pct(q.price, q.prevClose) : null;
-            const chgClass = dayChg == null ? "neutral" : dayChg >= 0 ? "up" : "down";
-            return (
-              <div key={item.symbol} className="marquee-item">
-                <span className="marquee-label">{item.label}</span>
-                {q?.price != null ? (
-                  <>
-                    <span className={`marquee-price ${chgClass}`}>
-                      {isKR(item.symbol)
-                        ? Math.round(q.price).toLocaleString("ko-KR")
-                        : q.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                    {dayChg != null && (
-                      <span className={`badge ${chgClass}`} style={{ fontSize: 10 }}>{fmtPct(dayChg)}</span>
-                    )}
-                  </>
-                ) : (
-                  <span className="marquee-price" style={{ color: "var(--text-faint)" }}>—</span>
-                )}
-              </div>
-            );
-          })}
+        <div className="marquee-scroll" style={{ overflow: "hidden" }}>
+          <div className="marquee-track" style={{ animationDuration: `${duration}s` }}>
+            {itemEls}
+            {itemEls}
+          </div>
         </div>
-        {canScrollRight && (
-          <button className="marquee-arrow marquee-arrow-right" onClick={() => scrollBy(200)}>›</button>
-        )}
         <div className="marquee-gear">
           <button
             className="icon-btn-sm"

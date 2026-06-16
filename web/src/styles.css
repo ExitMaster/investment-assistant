@@ -160,26 +160,30 @@ input, select {
   position: relative;
 }
 .marquee-scroll {
+  overflow: hidden;
+  padding: 0 44px 0 0;
+}
+.marquee-track {
   display: flex;
   align-items: center;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-  padding: 6px 16px;
-  padding-right: 44px;
+  width: max-content;
+  animation: marquee-run linear infinite;
 }
-.marquee-scroll::-webkit-scrollbar { display: none; }
+.marquee-track:hover { animation-play-state: paused; }
+@keyframes marquee-run {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
 .marquee-item {
   display: flex;
   align-items: baseline;
   gap: 5px;
-  padding: 2px 12px 2px 0;
-  margin-right: 12px;
+  padding: 6px 16px 6px 0;
+  margin-right: 16px;
   border-right: 1px solid var(--border);
   white-space: nowrap;
   flex-shrink: 0;
 }
-.marquee-item:last-child { border-right: none; margin-right: 0; }
 .marquee-label { font-size: 10px; font-weight: 700; color: var(--text-faint); letter-spacing: 0.05em; }
 .marquee-price { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--text); }
 .marquee-gear {
@@ -188,19 +192,6 @@ input, select {
   background: linear-gradient(to right, transparent, var(--bg) 35%);
   padding: 0 8px 0 24px;
 }
-.marquee-arrow {
-  position: absolute; top: 0; bottom: 0; z-index: 2;
-  display: flex; align-items: center; justify-content: center;
-  width: 28px;
-  background: linear-gradient(to right, var(--bg) 60%, transparent);
-  border: none; cursor: pointer;
-  color: var(--text-dim); font-size: 18px; line-height: 1;
-  padding: 0;
-  transition: color 0.15s;
-}
-.marquee-arrow:hover { color: var(--text); }
-.marquee-arrow-left { left: 0; background: linear-gradient(to right, var(--bg) 60%, transparent); }
-.marquee-arrow-right { right: 36px; background: linear-gradient(to left, var(--bg) 60%, transparent); }
 
 /* ── 전광판 관리 패널 ── */
 .marquee-panel {
