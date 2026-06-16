@@ -188,9 +188,9 @@ export function MarqueeTape({ uid }) {
     );
   });
 
-  // steps(N) = ticker 단위로 딱딱 이동, 각 ticker 3초 노출 후 슬라이드
+  // 항목당 6초 속도로 느리게 연속 스크롤 (Bloomberg 티커 스타일)
   const n = visible.length || 1;
-  const duration = n * 3;
+  const duration = n * 6;
 
   return (
     <>
@@ -198,10 +198,7 @@ export function MarqueeTape({ uid }) {
         <div className="marquee-scroll" style={{ overflow: "hidden" }}>
           <div
             className="marquee-track"
-            style={{
-              animationDuration: `${duration}s`,
-              animationTimingFunction: `steps(${n}, end)`,
-            }}
+            style={{ animationDuration: `${duration}s` }}
           >
             {itemEls}
             {itemEls}
