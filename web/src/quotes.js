@@ -1,30 +1,21 @@
 // 브라우저용 실시간 시세 조회 + 티커 검색.
 // 자체 Vercel 함수(/api/*)를 경유 → CORS 문제 없음.
 
-export async function getQuote(symbol) {
+export async function getQuotes(symbols) {
+  if (!symbols || symbols.length === 0) return {};
   try {
-    const res = await fetch(`/api/quote?symbol=${encodeURIComponent(symbol)}`, {
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    if (json && typeof json.price === "number") {
-      return { price: json.price, prevClose: json.prevClose, name: json.name };
-    }
-    return null;
+    const q = symbols.map((s) => encodeURIComponent(s)).join(",");
+    const res = await fetch(`/api/quotes?symbols=${q}`, { cache: "no-store" });
+    if (!res.ok) return {};
+    return await res.json();
   } catch {
-    return null;
+    return {};
   }
 }
 
-export async function getQuotes(symbols) {
-  const out = {};
-  await Promise.all(
-    symbols.map(async (s) => {
-      out[s] = await getQuote(s);
-    })
-  );
-  return out;
+export async function getQuote(symbol) {
+  const out = await getQuotes([symbol]);
+  return out[symbol] ?? null;
 }
 
 export async function searchTickers(query) {

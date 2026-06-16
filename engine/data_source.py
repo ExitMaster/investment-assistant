@@ -64,7 +64,12 @@ def get_daily_closes_for_ath(ticker, lookback):
     """
     ATH 계산용 종가 시리즈. lookback: '5y'|'3y'|'52w'|'all'
     """
-    period_map = {"5y": "5y", "3y": "3y", "52w": "1y", "all": "max"}
+    period_map = {
+        "1y": "1y", "2y": "2y",
+        "3y": "5y", "4y": "5y", "5y": "5y",
+        "6y": "10y", "7y": "10y", "8y": "10y", "9y": "10y", "10y": "10y",
+        "52w": "1y", "all": "max",
+    }
     period = period_map.get(lookback, "5y")
     df = get_daily_history(ticker, period=period)
     if df is None:

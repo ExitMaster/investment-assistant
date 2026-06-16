@@ -74,6 +74,15 @@ export default function App() {
     const { data } = await supabase
       .from("profiles").select("*").eq("id", session.user.id).single();
     setProfile(data ?? null);
+    // 색상 반전 설정 적용
+    if (data) {
+      const { data: st } = await supabase
+        .from("settings").select("color_inverted").eq("user_id", data.id).single();
+      document.documentElement.setAttribute(
+        "data-color-inverted",
+        st?.color_inverted ? "true" : "false"
+      );
+    }
   }
   useEffect(() => { loadProfile(); /* eslint-disable-next-line */ }, [session]);
 
@@ -96,7 +105,7 @@ export default function App() {
     <div className="app-wrap">
       <div className="topbar">
         <div className="brand" onClick={() => setScreen("dashboard")}>
-          Investment<span className="dot">·</span>Assistant
+          Investment Assistant
         </div>
         <div className="topbar-actions">
           <button
