@@ -6,6 +6,7 @@ import Dashboard, { MarqueeTape } from "./screens/Dashboard.jsx";
 import Alerts from "./screens/Alerts.jsx";
 import Settings from "./screens/Settings.jsx";
 import Admin from "./screens/Admin.jsx";
+import Backtest from "./screens/Backtest.jsx";
 
 /* ── SVG 아이콘 ── */
 const BellIcon = () => (
@@ -39,6 +40,12 @@ const ShieldIcon = () => (
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
   </svg>
 );
+const ChartIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 3v18h18" />
+    <path d="M7 14l3-4 3 3 4-6" />
+  </svg>
+);
 const LogoutIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -52,7 +59,7 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [screen, setScreen] = useState(() => {
     const s = new URLSearchParams(window.location.search).get("screen");
-    return ["dashboard", "alerts", "settings", "admin"].includes(s) ? s : "dashboard";
+    return ["dashboard", "alerts", "settings", "admin", "backtest"].includes(s) ? s : "dashboard";
   });
   const [theme, setTheme] = useState(
     () => localStorage.getItem("ia-theme") || "dark"
@@ -113,6 +120,13 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             <button
+              className={`icon-btn ${screen === "backtest" ? "active" : ""}`}
+              onClick={() => setScreen("backtest")}
+              title="백테스트"
+            >
+              <ChartIcon />
+            </button>
+            <button
               className={`icon-btn ${screen === "alerts" ? "active" : ""}`}
               onClick={() => setScreen("alerts")}
               title="알림"
@@ -158,6 +172,7 @@ export default function App() {
         {screen === "dashboard" && (
           <Dashboard profile={profile} flash={flash} />
         )}
+        {screen === "backtest" && <Backtest profile={profile} />}
         {screen === "alerts" && <Alerts profile={profile} />}
         {screen === "settings" && (
           <Settings
