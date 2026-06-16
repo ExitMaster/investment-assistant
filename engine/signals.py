@@ -13,22 +13,15 @@ def build_ath_from_history(closes, reset_pct=10.0):
     그대로 적용하면, 상승만 한 구간에서 ATH가 첫 종가에 고정되는 문제가 있다.
     초기화의 올바른 정의는 "현재까지의 종가 최고점"을 기준선으로 삼는 것이다.
     이후 실시간 운영에서 ratchet(쌍봉 방지, +reset% 후 하향 시 갱신)이 동작한다.
-
-    따라서:
-      - 기준선 ATH = 시리즈의 종가 최고값
-      - running_high = 마지막 종가 (이후 신고가 추적 시작점)
-      - exceeded_threshold = 마지막 종가가 이미 ATH+reset% 위인지
-    반환: AthRatchet 인스턴스
     """
     closes = [float(c) for c in closes if c is not None]
     if not closes:
         return None
 
-    peak = max(closes)            # 현재까지의 최고 종가 = 초기 ATH 기준선
-    last = closes[-1]             # 현재가(마지막 종가)
+    peak = max(closes)
+    last = closes[-1]
 
     obj = AthRatchet(peak, reset_pct=reset_pct)
-    # 마지막 종가가 최고점보다 높을 일은 없지만(peak가 max), 안전하게 running 설정
     obj.running_high = last
     obj.exceeded_threshold = last >= peak * (1 + reset_pct / 100.0)
     return obj
@@ -46,9 +39,7 @@ def deepest_level(drawdown_pct, levels):
 def evaluate_buy_levels(price, ath_obj, levels, baseline_level, active_levels):
     """
     장중 하락률 기반 매수 레벨 신규진입 판정.
-    반환: (newly_entered_levels, current_deepest)
-      - newly_entered_levels: 이번에 새로 진입한 레벨 리스트 (즉시 알림 대상)
-      - current_deepest: 현재 가장 깊은 레벨 (재알림 간격 판정용)
+    반환: (newly_entered_levels, current_deepest, drawdown_pct)
     baseline_level 이하(전일부터 활성)는 신규진입에서 제외.
     """
     dd = ath_obj.drawdown_pct(price)
@@ -60,13 +51,15 @@ def evaluate_buy_levels(price, ath_obj, levels, baseline_level, active_levels):
     return newly, cur, dd
 
 
-def evaluate_sell_levels(price, ath_obj, sell_pcts=(10, 20, 30)):
+def evaluate_sell_levels(price, ath_obj, sell_pcts=(0, 10, 20, 30)):
     """
-    ATH 초과 상승 매도 신호 (+10%/+20%/...).
-    반환: 도달한 가장 높은 +구간 (없으면 0)
+    ATH 도달/초과 매도 신호.
+    - level 0: ATH 도달 (gain >= 0)
+    - level 10, 20, 30: ATH+10%/+20%/+30% 초과
+    반환: (hit_level, gain_pct) 여기서 hit_level은 None(신호없음) 또는 int
     """
     gain = ath_obj.gain_pct(price)
-    hit = 0
+    hit = None
     for L in sorted(sell_pcts):
         if gain >= L:
             hit = L
@@ -82,7 +75,6 @@ def evaluate_indicators(df, settings):
     out = {}
     high, low, close, vol = df["High"], df["Low"], df["Close"], df["Volume"]
 
-    # DMI 매수신호
     pdi, mdi, adx = wilder_dmi(high, low, close)
     buy = dmi_buy_signal(mdi, adx, threshold=settings.get("dmi_threshold", 30))
     out["dmi_buy"] = bool(buy.iloc[-1]) if len(buy) else False
@@ -92,12 +84,10 @@ def evaluate_indicators(df, settings):
         "adx": round(float(adx.iloc[-1]), 1),
     }
 
-    # Stochastics Slow
     sp = settings.get("stoch_params", [5, 3, 3])
     k, d = stochastics_slow(high, low, close, k=sp[0], d=sp[1], smooth=sp[2])
     out["stoch"] = {"k": round(float(k.iloc[-1]), 1), "d": round(float(d.iloc[-1]), 1)}
 
-    # 저점 대량거래
     lookback = settings.get("volume_lookback_days", 126)
     vspike = volume_spike(vol, lookback=lookback)
     out["volume_spike"] = bool(vspike.iloc[-1]) if len(vspike) else False

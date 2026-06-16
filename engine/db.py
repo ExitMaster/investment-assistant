@@ -40,9 +40,9 @@ def _request(method, path, params=None, body=None, prefer=None):
 
 
 def get_active_users():
-    """status=active 인 사용자 + 설정 조회."""
+    """status=active 인 사용자 조회."""
     rows = _request("GET", "profiles", params={
-        "select": "id,email,display_name,telegram_chat_id,telegram_linked,status",
+        "select": "id,email,display_name,telegram_chat_id,telegram_linked,telegram_display_name,status",
         "status": "eq.active",
     })
     return rows or []
@@ -58,24 +58,24 @@ def get_settings(user_id):
 def get_index_tickers(user_id):
     """index_tickers 테이블에서 사용자의 ATH 감시 티커 목록 반환."""
     rows = _request("GET", "index_tickers", params={
-        "user_id": f"eq.{user_id}", "select": "ticker",
+        "user_id": f"eq.{user_id}", "select": "ticker,name",
     })
-    return [r["ticker"] for r in (rows or [])]
+    return [{"ticker": r["ticker"], "name": r.get("name")} for r in (rows or [])]
 
 
 def get_indicator_tickers(user_id):
     """indicator_tickers 테이블에서 사용자의 기술적 매수신호 티커 목록 반환."""
     rows = _request("GET", "indicator_tickers", params={
-        "user_id": f"eq.{user_id}", "select": "ticker",
+        "user_id": f"eq.{user_id}", "select": "ticker,name",
     })
-    return [r["ticker"] for r in (rows or [])]
+    return [{"ticker": r["ticker"], "name": r.get("name")} for r in (rows or [])]
 
 
 def get_watchlist(user_id):
     rows = _request("GET", "watchlist", params={
-        "user_id": f"eq.{user_id}", "select": "ticker",
+        "user_id": f"eq.{user_id}", "select": "ticker,name",
     })
-    return [r["ticker"] for r in (rows or [])]
+    return [{"ticker": r["ticker"], "name": r.get("name")} for r in (rows or [])]
 
 
 def get_ath_state(user_id, ticker):
@@ -95,8 +95,19 @@ def insert_alert(alert):
     return _request("POST", "alerts", body=alert, prefer="return=minimal")
 
 
-def link_telegram(user_id, chat_id):
+def link_telegram(user_id, chat_id, display_name=None):
+    body = {"telegram_chat_id": str(chat_id), "telegram_linked": True}
+    if display_name:
+        body["telegram_display_name"] = display_name
     return _request("PATCH", "profiles",
                     params={"id": f"eq.{user_id}"},
-                    body={"telegram_chat_id": str(chat_id), "telegram_linked": True},
+                    body=body,
+                    prefer="return=minimal")
+
+
+def unlink_telegram(user_id):
+    return _request("PATCH", "profiles",
+                    params={"id": f"eq.{user_id}"},
+                    body={"telegram_chat_id": None, "telegram_linked": False,
+                          "telegram_display_name": None},
                     prefer="return=minimal")

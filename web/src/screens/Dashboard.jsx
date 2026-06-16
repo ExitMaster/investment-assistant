@@ -14,6 +14,16 @@ function fmtPct(v, digits = 2) {
 function tvLink(sym) {
   return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(sym)}`;
 }
+function isKR(sym) { return /^\d{6}/.test((sym || "").split(".")[0]); }
+function displaySym(sym) { return sym.replace(/\.(KS|KQ)$/, ""); }
+function fmtPrice(v, sym, showCurrency = false) {
+  if (v == null) return null;
+  const kr = isKR(sym);
+  const formatted = kr
+    ? Math.round(v).toLocaleString("ko-KR")
+    : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return showCurrency ? `${kr ? "KRW" : "USD"} ${formatted}` : formatted;
+}
 
 /* ── SVG 아이콘 ── */
 const PlusIcon = () => (
@@ -26,12 +36,6 @@ const XIcon = () => (
     <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
   </svg>
 );
-const EditIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-  </svg>
-);
 const InfoIcon = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" />
@@ -39,6 +43,179 @@ const InfoIcon = () => (
     <line x1="12" y1="16" x2="12.01" y2="16" />
   </svg>
 );
+const GearIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
+/* ── 지수 전광판 기본 심볼 ── */
+const DEFAULT_MARQUEE = [
+  { symbol: "^GSPC",    label: "S&P500" },
+  { symbol: "^IXIC",    label: "NASDAQ" },
+  { symbol: "^DJI",     label: "DOW" },
+  { symbol: "^KS11",    label: "KOSPI" },
+  { symbol: "^KQ11",    label: "KOSDAQ" },
+  { symbol: "USDKRW=X", label: "USD/KRW" },
+];
+
+/* ── 전광판 ── */
+function MarqueeTape({ uid }) {
+  const [items, setItems] = useState([]);        // { symbol, label, enabled }
+  const [prices, setPrices] = useState({});
+  const [showPanel, setShowPanel] = useState(false);
+  const [addSym, setAddSym] = useState("");
+  const timer = useRef(null);
+
+  // DB에서 marquee_tickers 로드 (없으면 기본값 삽입)
+  useEffect(() => {
+    if (!uid) return;
+    (async () => {
+      const { data } = await supabase
+        .from("marquee_tickers")
+        .select("symbol,enabled,sort_order")
+        .eq("user_id", uid)
+        .order("sort_order");
+      if (data && data.length > 0) {
+        const merged = data.map((r) => ({
+          symbol: r.symbol,
+          label: DEFAULT_MARQUEE.find((d) => d.symbol === r.symbol)?.label || r.symbol,
+          enabled: r.enabled,
+        }));
+        setItems(merged);
+      } else {
+        // 기본값 삽입
+        const rows = DEFAULT_MARQUEE.map((d, i) => ({
+          user_id: uid, symbol: d.symbol, enabled: true, sort_order: i,
+        }));
+        await supabase.from("marquee_tickers").insert(rows);
+        setItems(DEFAULT_MARQUEE.map((d) => ({ ...d, enabled: true })));
+      }
+    })();
+  }, [uid]);
+
+  const fetchPrices = useCallback(async () => {
+    const syms = items.filter((i) => i.enabled).map((i) => i.symbol);
+    if (!syms.length) return;
+    const q = await getQuotes(syms);
+    setPrices(q);
+  }, [items]);
+
+  useEffect(() => {
+    fetchPrices();
+    clearInterval(timer.current);
+    timer.current = setInterval(fetchPrices, 30000);
+    return () => clearInterval(timer.current);
+  }, [fetchPrices]);
+
+  async function toggleItem(symbol, enabled) {
+    const next = items.map((i) => i.symbol === symbol ? { ...i, enabled } : i);
+    setItems(next);
+    await supabase.from("marquee_tickers")
+      .update({ enabled })
+      .eq("user_id", uid).eq("symbol", symbol);
+  }
+
+  async function addCustom() {
+    const sym = addSym.trim().toUpperCase();
+    if (!sym || items.find((i) => i.symbol === sym)) { setAddSym(""); return; }
+    const newItem = { symbol: sym, label: sym, enabled: true };
+    const next = [...items, newItem];
+    setItems(next);
+    setAddSym("");
+    await supabase.from("marquee_tickers").insert({
+      user_id: uid, symbol: sym, enabled: true, sort_order: next.length - 1,
+    });
+  }
+
+  async function removeItem(symbol) {
+    setItems((prev) => prev.filter((i) => i.symbol !== symbol));
+    await supabase.from("marquee_tickers")
+      .delete().eq("user_id", uid).eq("symbol", symbol);
+  }
+
+  const visible = items.filter((i) => i.enabled);
+
+  return (
+    <>
+      <div className="marquee-wrap" style={{ position: "relative" }}>
+        <div className="marquee-scroll">
+          {visible.map((item) => {
+            const q = prices[item.symbol];
+            const dayChg = q ? pct(q.price, q.prevClose) : null;
+            const chgClass = dayChg == null ? "neutral" : dayChg >= 0 ? "up" : "down";
+            return (
+              <div key={item.symbol} className="marquee-item">
+                <span className="marquee-label">{item.label}</span>
+                {q?.price != null ? (
+                  <>
+                    <span className={`marquee-price ${chgClass}`}>
+                      {isKR(item.symbol)
+                        ? Math.round(q.price).toLocaleString("ko-KR")
+                        : q.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    {dayChg != null && (
+                      <span className={`badge ${chgClass}`} style={{ fontSize: 10 }}>{fmtPct(dayChg)}</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="marquee-price" style={{ color: "var(--text-faint)" }}>—</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="marquee-gear">
+          <button
+            className="icon-btn-sm"
+            onClick={() => setShowPanel((v) => !v)}
+            title="전광판 설정"
+            style={{ color: showPanel ? "var(--accent)" : undefined }}
+          >
+            <GearIcon />
+          </button>
+        </div>
+      </div>
+
+      {showPanel && (
+        <div className="marquee-panel">
+          <p className="marquee-panel-title">지수 전광판 설정</p>
+          {items.map((item) => (
+            <div key={item.symbol} className="marquee-toggle-row">
+              <span>{item.label || item.symbol}</span>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <label className="switch" style={{ width: 36, height: 20 }}>
+                  <input
+                    type="checkbox"
+                    checked={item.enabled}
+                    onChange={(e) => toggleItem(item.symbol, e.target.checked)}
+                  />
+                  <span style={{ borderRadius: 999 }} />
+                </label>
+                {!DEFAULT_MARQUEE.find((d) => d.symbol === item.symbol) && (
+                  <button className="icon-btn-sm danger" onClick={() => removeItem(item.symbol)}>
+                    <XIcon />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+          <div className="row-inline" style={{ marginTop: 10 }}>
+            <input
+              value={addSym}
+              onChange={(e) => setAddSym(e.target.value)}
+              placeholder="심볼 추가 (예: BTC-USD)"
+              style={{ flex: 1, fontSize: 13 }}
+              onKeyDown={(e) => e.key === "Enter" && addCustom()}
+            />
+            <button className="btn-ghost" style={{ fontSize: 12 }} onClick={addCustom}>추가</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 /* ── 자동완성 검색 인풋 ── */
 function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
@@ -69,21 +246,21 @@ function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
             value={q}
             onChange={handleChange}
             placeholder={placeholder || "티커 또는 종목명 검색…"}
-            style={{ width: "100%" }}
+            style={{ width: "100%", fontSize: 14 }}
           />
           {(results.length > 0 || busy) && (
             <div className="search-dropdown">
               {busy && <div className="search-item muted">검색 중…</div>}
               {results.map((r) => (
                 <button key={r.symbol} className="search-item" onClick={() => onSelect(r)}>
-                  <span className="t-sym" style={{ fontSize: 14 }}>{r.symbol}</span>
-                  <span className="t-name" style={{ marginLeft: 8 }}>{r.name}</span>
+                  <span style={{ fontWeight: 600, fontSize: 13 }}>{displaySym(r.symbol)}</span>
+                  <span style={{ color: "var(--text-dim)", fontSize: 12, marginLeft: 6 }}>{r.name}</span>
                 </button>
               ))}
             </div>
           )}
         </div>
-        <button className="btn-ghost" style={{ whiteSpace: "nowrap" }} onClick={onCancel}>
+        <button className="btn-ghost" style={{ whiteSpace: "nowrap", fontSize: 13 }} onClick={onCancel}>
           취소
         </button>
       </div>
@@ -92,64 +269,48 @@ function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
   );
 }
 
-/* ── 통화 포맷 ── */
-function isKR(sym) { return /^\d{6}/.test(sym.split(".")[0]); }
-function fmtPrice(v, sym, showCurrency = false) {
-  if (v == null) return null;
-  const kr = isKR(sym);
-  const formatted = kr
-    ? Math.round(v).toLocaleString("ko-KR")
-    : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return showCurrency ? `${kr ? "KRW" : "USD"} ${formatted}` : formatted;
-}
-
 /* ── 티커 한 행 ── */
-function TickerRow({ sym, quotes, athMap, onRemove, onEdit }) {
+function TickerRow({ sym, quotes, athMap, onRemove }) {
   const q = quotes[sym];
   const athRow = athMap[sym];
   const ath = athRow?.ath ?? null;
   const price = q?.price ?? null;
   const prevClose = q?.prevClose ?? null;
-  const name = q?.name && q.name !== sym ? q.name : null;
-
+  const name = q?.name && q.name !== sym && q.name !== displaySym(sym) ? q.name : null;
   const dayChg = pct(price, prevClose);
   const athChg = pct(price, ath);
+
+  const priceClass = dayChg == null ? "neutral" : dayChg >= 0 ? "up" : "down";
+  const dsym = displaySym(sym);
 
   return (
     <div className="ticker-row">
       <div className="t-info">
-        <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{sym}</a>
+        <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{dsym}</a>
         {name && <div className="t-name">{name}</div>}
       </div>
 
       <div className="t-data">
-        {price != null && (
-          <div className="t-ref-row" style={{ marginBottom: 2 }}>
-            <span className="t-price mono">{fmtPrice(price, sym, true)}</span>
-          </div>
-        )}
+        <div className="t-price-row">
+          {price != null && (
+            <span className={`t-price mono ${priceClass}`}>{fmtPrice(price, sym, true)}</span>
+          )}
+          {dayChg != null && (
+            <span className={`badge ${priceClass}`}>{fmtPct(dayChg)}</span>
+          )}
+        </div>
         {ath != null && (
-          <div className="t-ref-row">
-            <span className="t-ref mono">ATH {fmtPrice(ath, sym)}</span>
+          <div className="t-ath-row">
+            <span className="t-ath-label">ATH</span>
+            <span className="t-ath-price mono">{fmtPrice(ath, sym)}</span>
             {athChg != null && (
-              <span className={`badge mono ${athChg >= 0 ? "up" : "down"}`}>{fmtPct(athChg)}</span>
-            )}
-          </div>
-        )}
-        {prevClose != null && (
-          <div className="t-ref-row">
-            <span className="t-ref mono">전일 {fmtPrice(prevClose, sym)}</span>
-            {dayChg != null && (
-              <span className={`badge mono ${dayChg >= 0 ? "up" : "down"}`}>{fmtPct(dayChg)}</span>
+              <span className={`badge ${athChg >= 0 ? "up" : "down"}`} style={{ fontSize: 10 }}>{fmtPct(athChg)}</span>
             )}
           </div>
         )}
       </div>
 
       <div className="t-actions">
-        {onEdit && (
-          <button className="icon-btn-sm" onClick={onEdit} title="수정"><EditIcon /></button>
-        )}
         {onRemove && (
           <button className="icon-btn-sm danger" onClick={() => onRemove(sym)} title="삭제"><XIcon /></button>
         )}
@@ -162,7 +323,7 @@ function TickerRow({ sym, quotes, athMap, onRemove, onEdit }) {
 function SectionCard({
   title, note,
   tickers, quotes, athMap,
-  onRemove, onEdit,
+  onRemove,
   onAdd, addDisabled, addLabel,
   adding, onCancelAdd, onSelectAdd,
   searchPlaceholder, searchHint,
@@ -193,14 +354,14 @@ function SectionCard({
             style={{ flexShrink: 0 }}
           >
             <PlusIcon />
-            {addLabel && <span style={{ fontSize: 11, marginLeft: 4 }}>{addLabel}</span>}
+            {addLabel && <span style={{ fontSize: 10, marginLeft: 3 }}>{addLabel}</span>}
           </button>
         )}
       </div>
-      {showNote && note && <p className="hint section-note">{note}</p>}
+      {showNote && note && <p className="section-note">{note}</p>}
 
       {tickers.length === 0 && !adding && (
-        <p className="muted" style={{ marginTop: 12, fontSize: 14 }}>
+        <p className="muted" style={{ marginTop: 12, fontSize: 13 }}>
           + 버튼으로 티커를 추가하세요.
         </p>
       )}
@@ -212,7 +373,6 @@ function SectionCard({
           quotes={quotes}
           athMap={athMap}
           onRemove={onRemove}
-          onEdit={onEdit ? () => onEdit(sym) : null}
         />
       ))}
 
@@ -234,14 +394,14 @@ function SectionCard({
 export default function Dashboard({ profile, flash }) {
   const [settings, setSettings] = useState(null);
   const [indexTickers, setIndexTickers] = useState([]);
+  const [indicatorTickers, setIndicatorTickers] = useState([]);
   const [watchlist, setWatchlist] = useState([]);
   const [athMap, setAthMap] = useState({});
   const [quotes, setQuotes] = useState({});
   const [loading, setLoading] = useState(true);
   const [updatedAt, setUpdatedAt] = useState(null);
-
-  const [addingTo, setAddingTo] = useState(null); // 'ath' | 'indicator' | 'watchlist' | null
-  const [indicatorTickers, setIndicatorTickers] = useState([]);
+  const [addingTo, setAddingTo] = useState(null);
+  const quoteTimer = useRef(null);
 
   const uid = profile.id;
 
@@ -249,15 +409,15 @@ export default function Dashboard({ profile, flash }) {
     const [{ data: st }, { data: ix }, { data: ind }, { data: wl }, { data: aths }] =
       await Promise.all([
         supabase.from("settings").select("*").eq("user_id", uid).single(),
-        supabase.from("index_tickers").select("ticker").eq("user_id", uid),
-        supabase.from("indicator_tickers").select("ticker").eq("user_id", uid),
-        supabase.from("watchlist").select("ticker").eq("user_id", uid),
+        supabase.from("index_tickers").select("ticker,name").eq("user_id", uid),
+        supabase.from("indicator_tickers").select("ticker,name").eq("user_id", uid),
+        supabase.from("watchlist").select("ticker,name").eq("user_id", uid),
         supabase.from("ath_state").select("*").eq("user_id", uid),
       ]);
     setSettings(st);
-    const ixList = (ix ?? []).map((r) => r.ticker);
+    const ixList  = (ix  ?? []).map((r) => r.ticker);
     const indList = (ind ?? []).map((r) => r.ticker);
-    const wlList = (wl ?? []).map((r) => r.ticker);
+    const wlList  = (wl  ?? []).map((r) => r.ticker);
     setIndexTickers(ixList);
     setIndicatorTickers(indList);
     setWatchlist(wlList);
@@ -268,13 +428,9 @@ export default function Dashboard({ profile, flash }) {
   }, [uid]);
 
   const refreshQuotes = useCallback(async (ixList, indList, wlList) => {
-    const syms = new Set([
-      ...(ixList ?? []),
-      ...(indList ?? []),
-      ...(wlList ?? []),
-    ]);
-    if (syms.size === 0) return;
-    const q = await getQuotes([...syms]);
+    const syms = [...new Set([...(ixList ?? []), ...(indList ?? []), ...(wlList ?? [])])];
+    if (!syms.length) return;
+    const q = await getQuotes(syms);
     setQuotes(q);
     setUpdatedAt(new Date());
   }, []);
@@ -290,14 +446,15 @@ export default function Dashboard({ profile, flash }) {
 
   useEffect(() => {
     if (loading) return;
-    const id = setInterval(
+    clearInterval(quoteTimer.current);
+    quoteTimer.current = setInterval(
       () => refreshQuotes(indexTickers, indicatorTickers, watchlist),
-      30000
+      10000
     );
-    return () => clearInterval(id);
+    return () => clearInterval(quoteTimer.current);
   }, [loading, indexTickers, indicatorTickers, watchlist, refreshQuotes]);
 
-  /* ── ATH 초기화 (티커 추가 직후 호출) ── */
+  /* ATH 즉시 초기화 (티커 추가 직후) */
   async function initAth(ticker) {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
@@ -320,78 +477,70 @@ export default function Dashboard({ profile, flash }) {
     } catch {}
   }
 
-  /* ── ATH 감시 티커 추가/삭제 ── */
+  /* 티커 추가 시 종목명 DB에도 저장 */
+  async function saveTickerName(table, ticker, name) {
+    if (!name || name === ticker) return;
+    await supabase.from(table).update({ name }).eq("user_id", uid).eq("ticker", ticker);
+  }
+
+  /* ── ATH 대비 하락율∙매도 알림 티커 ── */
   async function addIndexTicker(item) {
     const t = item.symbol;
-    if (indexTickers.length >= 5) {
-      flash("ATH 감시는 최대 5개까지 추가할 수 있습니다");
-      return;
-    }
+    if (indexTickers.length >= 5) { flash("ATH 감시는 최대 5개까지 추가할 수 있습니다"); return; }
     if (indexTickers.includes(t)) { setAddingTo(null); return; }
-    const { error } = await supabase
-      .from("index_tickers")
-      .insert({ user_id: uid, ticker: t });
+    const { error } = await supabase.from("index_tickers").insert({ user_id: uid, ticker: t, name: item.name || null });
     if (error) { flash("추가 실패: " + error.message); return; }
     const next = [...indexTickers, t];
     setIndexTickers(next);
     setAddingTo(null);
-    flash(`${t} 추가됨`);
+    flash(`${displaySym(t)} 추가됨`);
     refreshQuotes(next, indicatorTickers, watchlist);
     initAth(t);
   }
   async function removeIndexTicker(t) {
     await supabase.from("index_tickers").delete().eq("user_id", uid).eq("ticker", t);
-    const next = indexTickers.filter((x) => x !== t);
-    setIndexTickers(next);
-    flash(`${t} 삭제됨`);
+    setIndexTickers((prev) => prev.filter((x) => x !== t));
+    flash(`${displaySym(t)} 삭제됨`);
   }
 
-  /* ── 기술적 매수신호 티커 추가/삭제 ── */
+  /* ── 기술적 매수∙매도신호 알림 티커 ── */
   async function addIndicatorTicker(item) {
     const t = item.symbol;
-    if (indicatorTickers.length >= 30) {
-      flash("기술적 매수신호 감시는 최대 30개까지 추가할 수 있습니다");
-      return;
-    }
+    if (indicatorTickers.length >= 50) { flash("기술적 매수신호 감시는 최대 50개까지 추가할 수 있습니다"); return; }
     if (indicatorTickers.includes(t)) { setAddingTo(null); return; }
-    const { error } = await supabase.from("indicator_tickers").insert({ user_id: uid, ticker: t });
+    const { error } = await supabase.from("indicator_tickers").insert({ user_id: uid, ticker: t, name: item.name || null });
     if (error) { flash("추가 실패: " + error.message); return; }
     const next = [...indicatorTickers, t];
     setIndicatorTickers(next);
     setAddingTo(null);
-    flash(`${t} 추가됨`);
+    flash(`${displaySym(t)} 추가됨`);
     refreshQuotes(indexTickers, next, watchlist);
     initAth(t);
   }
   async function removeIndicatorTicker(t) {
     await supabase.from("indicator_tickers").delete().eq("user_id", uid).eq("ticker", t);
-    const next = indicatorTickers.filter((x) => x !== t);
-    setIndicatorTickers(next);
-    flash(`${t} 삭제됨`);
+    setIndicatorTickers((prev) => prev.filter((x) => x !== t));
+    flash(`${displaySym(t)} 삭제됨`);
   }
 
-  /* ── 국내주식 DMI 티커 추가/삭제 ── */
+  /* ── 국내주식 DMI 매수신호 알림 티커 ── */
   async function addWatchTicker(item) {
     const t = item.symbol;
-    if (watchlist.length >= 30) {
-      flash("국내주식 DMI 감시는 최대 30개까지 추가할 수 있습니다");
-      return;
-    }
+    if (watchlist.length >= 50) { flash("국내주식 DMI 감시는 최대 50개까지 추가할 수 있습니다"); return; }
     if (watchlist.includes(t)) { setAddingTo(null); return; }
-    const { error } = await supabase.from("watchlist").insert({ user_id: uid, ticker: t });
+    const { error } = await supabase.from("watchlist").insert({ user_id: uid, ticker: t, name: item.name || null });
     if (error) { flash("추가 실패: " + error.message); return; }
     const next = [...watchlist, t];
     setWatchlist(next);
     setAddingTo(null);
-    flash(`${t} 추가됨`);
+    flash(`${displaySym(t)} 추가됨`);
     refreshQuotes(indexTickers, indicatorTickers, next);
     initAth(t);
   }
   async function removeWatchTicker(t) {
     await supabase.from("watchlist").delete().eq("user_id", uid).eq("ticker", t);
-    const next = watchlist.filter((x) => x !== t);
-    setWatchlist(next);
-    flash(`${t} 삭제됨`);
+    setWatchlist((prev) => prev.filter((x) => x !== t));
+    flash(`${displaySym(t)} 삭제됨`);
   }
 
   if (loading)
@@ -399,12 +548,17 @@ export default function Dashboard({ profile, flash }) {
 
   return (
     <>
-      {/* ① ATH 대비 하락율 알림 */}
+      {/* 지수 전광판 */}
+      <MarqueeTape uid={uid} />
+
+      <div style={{ height: 12 }} />
+
+      {/* ① ATH 대비 하락율∙매도 알림 */}
       <SectionCard
-        title="ATH 대비 하락율 알림"
+        title="ATH 대비 하락율∙매도 알림"
         note={`ATH 대비 설정된 % 하락 시 텔레그램 알림 · 매수 신호: ATH 대비 −${
           (settings?.drawdown_levels ?? [10, 20, 30]).join(" / −")
-        }%`}
+        }% · 매도 알림: ATH 도달 및 ATH 대비 매 10% 초과 상승 시.`}
         tickers={indexTickers}
         quotes={quotes}
         athMap={athMap}
@@ -416,10 +570,10 @@ export default function Dashboard({ profile, flash }) {
         onCancelAdd={() => setAddingTo(null)}
         onSelectAdd={addIndexTicker}
         searchPlaceholder="예: QQQ, SPY, 069500"
-        searchHint="ATH 대비 하락율 신호를 계산할 지수 티커. 최대 5개."
+        searchHint="ATH 대비 하락율∙매도 신호를 계산할 지수 티커. 최대 5개."
       />
 
-      {/* ② 기술적 매수신호 알림 */}
+      {/* ② 기술적 매수∙매도신호 알림 */}
       <SectionCard
         title="기술적 매수∙매도신호 알림"
         note="DMI·스토캐스틱·거래량 기준, 장시작/마감 특정 시점 판정 · 매도 신호: ATH 대비 +10% / +20% …"
@@ -428,13 +582,13 @@ export default function Dashboard({ profile, flash }) {
         athMap={athMap}
         onRemove={removeIndicatorTicker}
         onAdd={() => setAddingTo("indicator")}
-        addDisabled={indicatorTickers.length >= 30}
-        addLabel={`${indicatorTickers.length}/30`}
+        addDisabled={indicatorTickers.length >= 50}
+        addLabel={`${indicatorTickers.length}/50`}
         adding={addingTo === "indicator"}
         onCancelAdd={() => setAddingTo(null)}
         onSelectAdd={addIndicatorTicker}
         searchPlaceholder="예: QQQ, 069500"
-        searchHint="DMI·거래량 보조지표 계산에 사용할 티커. 최대 30개."
+        searchHint="DMI·거래량 보조지표 계산에 사용할 티커. 최대 50개."
       />
 
       {/* ③ 국내주식 DMI 매수신호 알림 */}
@@ -446,22 +600,20 @@ export default function Dashboard({ profile, flash }) {
         athMap={athMap}
         onRemove={removeWatchTicker}
         onAdd={() => setAddingTo("watchlist")}
-        addDisabled={watchlist.length >= 30}
-        addLabel={`${watchlist.length}/30`}
+        addDisabled={watchlist.length >= 50}
+        addLabel={`${watchlist.length}/50`}
         adding={addingTo === "watchlist"}
         onCancelAdd={() => setAddingTo(null)}
         onSelectAdd={addWatchTicker}
         searchPlaceholder="예: 삼성전자, 005930, KODEX"
-        searchHint="국내 주식 종목명 또는 6자리 코드로 검색. 최대 30개."
+        searchHint="국내 주식 종목명 또는 6자리 코드로 검색. 최대 50개."
       />
 
-      <p className="hint" style={{ textAlign: "center", marginTop: 4, fontSize: 12 }}>
-        현재가 30초마다 갱신 · ATH는 엔진이 계산 · 미국/한국 시장 지원
+      <p className="hint" style={{ textAlign: "center", marginTop: 4, fontSize: 11 }}>
+        현재가 10초마다 갱신 · ATH는 엔진이 계산 · 미국/한국 시장 지원
         {updatedAt
-          ? ` · 갱신 ${updatedAt.toLocaleTimeString("ko-KR", {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
+          ? ` · ${updatedAt.toLocaleTimeString("ko-KR", {
+              hour: "2-digit", minute: "2-digit", second: "2-digit",
             })}`
           : ""}
       </p>

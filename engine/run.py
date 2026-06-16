@@ -25,11 +25,12 @@ from data_source import (
 ET  = timezone(timedelta(hours=-4))   # 간이 ET (서머타임은 워크플로 스케줄에서 관리)
 KST = timezone(timedelta(hours=9))
 
-# 시장별 개장/폐장 (로컬 시간 기준)
-_US_OPEN  = (9, 30)   # 09:30 ET
-_US_CLOSE = (16, 0)   # 16:00 ET
-_KR_OPEN  = (9, 0)    # 09:00 KST
-_KR_CLOSE = (15, 30)  # 15:30 KST
+_US_OPEN  = (9, 30)
+_US_CLOSE = (16, 0)
+_KR_OPEN  = (9, 0)
+_KR_CLOSE = (15, 30)
+
+SELL_LEVELS = (0, 10, 20, 30)
 
 
 def _is_kr(ticker):
@@ -99,7 +100,7 @@ def save_ath(user_id, ticker, obj, baseline_level, active_levels,
 
 
 # ============================================================
-# 모드 1: 장중 하락률 (intraday)
+# 모드 1: 장중 하락률 + 매도 (intraday)
 # ============================================================
 def run_intraday():
     users = db.get_active_users()
@@ -113,11 +114,10 @@ def run_intraday():
         if not st:
             continue
 
-        # index_tickers 테이블 우선, 없으면 settings.index_ticker로 fallback
-        tickers = db.get_index_tickers(uid)
-        if not tickers and st.get("index_ticker"):
-            tickers = [st["index_ticker"]]
-        if not tickers:
+        ticker_rows = db.get_index_tickers(uid)
+        if not ticker_rows and st.get("index_ticker"):
+            ticker_rows = [{"ticker": st["index_ticker"], "name": None}]
+        if not ticker_rows:
             continue
 
         levels = st.get("drawdown_levels", [10, 20, 30])
@@ -126,7 +126,11 @@ def run_intraday():
         buy_enabled = st.get("enable_buy_levels", True)
         sell_enabled = st.get("enable_sell_signals", True)
 
-        for ticker in tickers:
+        tickers_set = {r["ticker"] for r in ticker_rows}
+
+        for row in ticker_rows:
+            ticker = row["ticker"]
+            name = row.get("name")
             price = get_current_price(ticker)
             if price is None:
                 print(f"  {ticker}: no price"); continue
@@ -135,23 +139,29 @@ def run_intraday():
             if obj is None:
                 continue
 
-            # 새 거래일이면 baseline 재설정
-            if not saved or saved.get("last_trade_day") != day:
+            is_new_day = not saved or saved.get("last_trade_day") != day
+            if is_new_day:
                 dd_now = obj.drawdown_pct(price)
                 baseline_level = deepest_level(dd_now, levels)
                 active_levels = []
                 level_last_alert = {}
+                # 매도 baseline: 당일 시작 시 이미 활성인 매도 레벨 기록
+                gain_now = obj.gain_pct(price)
+                sell_baseline = -1
+                for L in sorted(SELL_LEVELS):
+                    if gain_now >= L:
+                        sell_baseline = L
+                level_last_alert["sell_baseline"] = sell_baseline
             else:
                 baseline_level = saved.get("baseline_level", 0)
                 active_levels = list(saved.get("active_levels", []))
                 level_last_alert = dict(saved.get("level_last_alert", {}))
 
             if buy_enabled:
-                # --- 매수 레벨 신규진입 ---
                 newly, cur_deep, dd = evaluate_buy_levels(
                     price, obj, levels, baseline_level, active_levels)
                 for L in newly:
-                    msg = notify.format_buy_level(ticker, ticker, L, price, obj.ath, -dd)
+                    msg = notify.format_buy_level(ticker, L, price, obj.ath, -dd, name=name)
                     if notify.send_message(chat, msg):
                         db.insert_alert({
                             "user_id": uid, "ticker": ticker, "kind": "buy_level",
@@ -160,7 +170,7 @@ def run_intraday():
                     active_levels.append(L)
                     level_last_alert[str(L)] = now_iso()
 
-                # --- 구간 유지 재알림 ---
+                # 구간 유지 재알림
                 if repeat > 0 and cur_deep > baseline_level and cur_deep in active_levels:
                     last = level_last_alert.get(str(cur_deep))
                     send_repeat = True
@@ -169,8 +179,9 @@ def run_intraday():
                                    datetime.fromisoformat(last)).total_seconds() / 60
                         send_repeat = elapsed >= repeat
                     if send_repeat and cur_deep not in newly:
-                        msg = notify.format_buy_level(ticker, ticker, cur_deep, price, obj.ath, -dd) \
-                              + f"\n(구간 유지 · {repeat}분 재알림)"
+                        msg = notify.format_buy_level(
+                            ticker, cur_deep, price, obj.ath, -dd, name=name
+                        ) + f"\n(구간 유지 · {repeat}분 재알림)"
                         if notify.send_message(chat, msg):
                             db.insert_alert({
                                 "user_id": uid, "ticker": ticker, "kind": "buy_level",
@@ -183,25 +194,45 @@ def run_intraday():
                     price, obj, levels, baseline_level, active_levels)
 
             if sell_enabled:
-                # --- ATH 초과 매도 ---
-                hit, gain = evaluate_sell_levels(price, obj)
-                if hit:
-                    sell_key = f"sell_{hit}"
-                    if sell_key not in level_last_alert:
-                        msg = notify.format_sell(ticker, hit, price, obj.ath, gain)
-                        if notify.send_message(chat, msg):
-                            db.insert_alert({
-                                "user_id": uid, "ticker": ticker, "kind": "sell",
-                                "level": f"+{hit}%", "message": msg,
-                                "price": price, "ath": obj.ath,
-                            })
-                        level_last_alert[sell_key] = now_iso()
+                hit, gain = evaluate_sell_levels(price, obj, SELL_LEVELS)
+                if hit is not None:
+                    try:
+                        sell_baseline = int(level_last_alert.get("sell_baseline", -1))
+                    except (TypeError, ValueError):
+                        sell_baseline = -1
+
+                    if hit > sell_baseline:
+                        sell_key = f"sell_{hit}"
+                        last_sell = level_last_alert.get(sell_key)
+                        should_alert = last_sell is None
+                        is_repeat_sell = False
+
+                        if last_sell and repeat > 0:
+                            elapsed = (datetime.now(timezone.utc) -
+                                       datetime.fromisoformat(last_sell)).total_seconds() / 60
+                            if elapsed >= repeat:
+                                should_alert = True
+                                is_repeat_sell = True
+
+                        if should_alert:
+                            msg = notify.format_sell(ticker, hit, price, obj.ath, gain, name=name)
+                            if is_repeat_sell:
+                                msg += f"\n(구간 유지 · {repeat}분 재알림)"
+                            if notify.send_message(chat, msg):
+                                db.insert_alert({
+                                    "user_id": uid, "ticker": ticker, "kind": "sell",
+                                    "level": f"+{hit}%" if hit > 0 else "ATH도달",
+                                    "message": msg, "price": price, "ath": obj.ath,
+                                })
+                            level_last_alert[sell_key] = now_iso()
 
             save_ath(uid, ticker, obj, baseline_level, active_levels, level_last_alert, day)
             print(f"  {ticker}: px={price:.2f} dd={dd:+.1f}% newly={newly}")
 
-        # --- 나머지 티커(indicator/watchlist) ATH 상태 갱신 (알림 없음) ---
-        extra = (set(db.get_indicator_tickers(uid)) | set(db.get_watchlist(uid))) - set(tickers)
+        # 나머지 티커(indicator/watchlist) ATH 상태 갱신 (알림 없음)
+        ind_rows = db.get_indicator_tickers(uid)
+        wl_rows = db.get_watchlist(uid)
+        extra = {r["ticker"] for r in ind_rows + wl_rows} - tickers_set
         for ticker in extra:
             price = get_current_price(ticker)
             if price is None:
@@ -223,7 +254,6 @@ def run_indicators():
     users = db.get_active_users()
     print(f"[indicators] {len(users)} active users")
 
-    # 티커별 히스토리 캐시 (사용자 간 중복 다운로드 방지)
     hist_cache = {}
 
     def hist(ticker):
@@ -241,12 +271,13 @@ def run_indicators():
         alert_times = st.get("indicator_alert_times") or []
         now_utc = datetime.now(timezone.utc)
 
-        # 지수 보조지표
         if st.get("enable_buy_indicators", True):
-            ind_tickers = db.get_indicator_tickers(uid)
-            if not ind_tickers and st.get("indicator_ticker"):
-                ind_tickers = [st["indicator_ticker"]]
-            for tkr in ind_tickers:
+            ind_rows = db.get_indicator_tickers(uid)
+            if not ind_rows and st.get("indicator_ticker"):
+                ind_rows = [{"ticker": st["indicator_ticker"], "name": None}]
+            for row in ind_rows:
+                tkr = row["ticker"]
+                tname = row.get("name")
                 if not should_run_indicator(tkr, alert_times, now_utc):
                     print(f"  [indicators] {tkr}: skip (시각 불일치)")
                     continue
@@ -254,7 +285,7 @@ def run_indicators():
                 if df is not None and len(df) > 30:
                     sig = evaluate_indicators(df, st)
                     if sig["dmi_buy"] or sig["volume_spike"]:
-                        msg = notify.format_indicator(tkr, sig)
+                        msg = notify.format_indicator(tkr, sig, name=tname)
                         if notify.send_message(chat, msg):
                             db.insert_alert({
                                 "user_id": uid, "ticker": tkr, "kind": "buy_indicator",
@@ -262,9 +293,10 @@ def run_indicators():
                                 "price": float(df["Close"].iloc[-1]), "ath": None,
                             })
 
-        # 개별주식 watchlist
         if st.get("enable_watchlist", True):
-            for wt in db.get_watchlist(uid):
+            for row in db.get_watchlist(uid):
+                wt = row["ticker"]
+                wname = row.get("name")
                 if not should_run_indicator(wt, alert_times, now_utc):
                     continue
                 df = hist(wt)
@@ -272,7 +304,7 @@ def run_indicators():
                     continue
                 sig = evaluate_indicators(df, st)
                 if sig["dmi_buy"]:
-                    msg = notify.format_watchlist(wt, sig)
+                    msg = notify.format_watchlist(wt, sig, name=wname)
                     if notify.send_message(chat, msg):
                         db.insert_alert({
                             "user_id": uid, "ticker": wt, "kind": "watchlist",

@@ -1,45 +1,103 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { supabase, TELEGRAM_BOT_USERNAME } from "../supabase.js";
 
-const LOOKBACKS = [
-  { v: "5y", label: "최근 5년" },
-  { v: "3y", label: "최근 3년" },
-  { v: "52w", label: "52주" },
-  { v: "all", label: "전체" },
-];
+/* ── ATH 산정 기간 슬라이더 변환 ── */
+function lookbackToSlider(v) {
+  if (!v || v === "all") return 11;
+  if (v === "52w") return 1;
+  const n = parseInt(v);
+  return isNaN(n) ? 5 : Math.min(Math.max(n, 1), 10);
+}
+function sliderToLookback(n) { return n >= 11 ? "all" : `${n}y`; }
+function sliderLabel(n) { return n >= 11 ? "전체" : `${n}년`; }
 
-/* 보조지표 알림 시각 1개 행 */
+/* ── 알림 시각 슬라이더 변환 ── */
+function timeToSlider(t) {
+  if (!t) return 0;
+  if (t.anchor === "open") return Math.min(t.offset_min ?? 0, 180);
+  return 360 - Math.min(t.offset_min ?? 0, 180);
+}
+function sliderToTime(v) {
+  if (v <= 180) return { anchor: "open", offset_min: v };
+  return { anchor: "close", offset_min: 360 - v };
+}
+function sliderTimeLabel(v) {
+  if (v === 0) return "장시작 바로";
+  if (v <= 180) return `장시작 후 ${v}분`;
+  if (v === 360) return "장마감 바로";
+  return `장마감 전 ${360 - v}분`;
+}
+
+/* ── 시각 행 (단일 슬라이더) ── */
 function TimeRow({ t, i, onUpdate, onDelete }) {
-  const isOpen = t.anchor === "open";
-  const absMin = Math.abs(t.offset_min ?? 0);
-  const label = isOpen ? `장시작 후 ${absMin}분` : `장마감 ${absMin}분 전`;
+  const v = timeToSlider(t);
+  return (
+    <div className="time-slider-wrap">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span className="time-slider-display">{sliderTimeLabel(v)}</span>
+        <button className="icon-btn-sm danger" onClick={() => onDelete(i)} title="삭제">×</button>
+      </div>
+      <div className="time-slider-labels" style={{ marginTop: 8 }}>
+        <span>장시작</span>
+        <span>장마감</span>
+      </div>
+      <input
+        type="range"
+        className="time-range"
+        min="0"
+        max="360"
+        step="5"
+        value={v}
+        onChange={(e) => onUpdate(i, sliderToTime(parseInt(e.target.value)))}
+      />
+    </div>
+  );
+}
+
+/* ── 하락레벨 칩 입력 ── */
+function ChipInput({ levels, onChange }) {
+  const [inputVal, setInputVal] = useState("");
+  const inputRef = useRef(null);
+
+  function addLevel(raw) {
+    const n = parseInt(String(raw).trim());
+    if (!n || n <= 0 || n > 100) return;
+    if (!levels.includes(n)) onChange([...levels, n].sort((a, b) => a - b));
+    setInputVal("");
+  }
+
+  function handleKey(e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      addLevel(inputVal);
+    } else if (e.key === "Backspace" && inputVal === "" && levels.length > 0) {
+      onChange(levels.slice(0, -1));
+    }
+  }
 
   return (
-    <div className="time-row" key={i}>
-      <div className="time-row-top">
-        <select
-          value={t.anchor}
-          onChange={(e) => onUpdate(i, { anchor: e.target.value, offset_min: 0 })}
-        >
-          <option value="open">장 시작 후</option>
-          <option value="close">장 마감 전</option>
-        </select>
-        <span className="time-label">{label}</span>
-        <button className="icon-btn-sm danger" onClick={() => onDelete(i)} title="삭제">
-          ×
-        </button>
-      </div>
-      <div className="slider-wrap" style={{ marginTop: 8 }}>
-        <input
-          type="range"
-          min="0"
-          max="180"
-          step="5"
-          value={absMin}
-          onChange={(e) => onUpdate(i, { offset_min: parseInt(e.target.value) })}
-        />
-        <span className="slider-val">{absMin}분</span>
-      </div>
+    <div className="chip-input-wrap" onClick={() => inputRef.current?.focus()}>
+      {levels.map((n) => (
+        <span key={n} className="chip">
+          -{n}%
+          <button
+            className="chip-x"
+            onClick={(e) => { e.stopPropagation(); onChange(levels.filter((x) => x !== n)); }}
+          >×</button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        className="chip-input"
+        type="number"
+        min="1"
+        max="100"
+        value={inputVal}
+        onChange={(e) => setInputVal(e.target.value)}
+        onKeyDown={handleKey}
+        onBlur={() => { if (inputVal) addLevel(inputVal); }}
+        placeholder={levels.length === 0 ? "숫자 입력 후 Enter" : "+"}
+      />
     </div>
   );
 }
@@ -47,6 +105,7 @@ function TimeRow({ t, i, onUpdate, onDelete }) {
 export default function Settings({ profile, flash, onTelegramLinked }) {
   const [s, setS] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -73,163 +132,106 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
 
   async function save() {
     setSaving(true);
-    // display_ticker는 DB에서 제거됨, user_id/updated_at은 제외
     const { user_id, updated_at, display_ticker, ...payload } = s;
     const { error } = await supabase
       .from("settings")
       .update({ ...payload, updated_at: new Date().toISOString() })
       .eq("user_id", profile.id);
     setSaving(false);
+    if (!error) {
+      document.documentElement.setAttribute(
+        "data-color-inverted",
+        s.color_inverted ? "true" : "false"
+      );
+    }
     flash(error ? "저장 실패: " + error.message : "설정을 저장했습니다");
   }
 
+  async function unlinkTelegram() {
+    setUnlinking(true);
+    await supabase.from("profiles").update({
+      telegram_chat_id: null,
+      telegram_linked: false,
+      telegram_display_name: null,
+    }).eq("id", profile.id);
+    setUnlinking(false);
+    flash("텔레그램 연결을 해제했습니다");
+    if (onTelegramLinked) onTelegramLinked();
+  }
+
   const times = Array.isArray(s.indicator_alert_times) ? s.indicator_alert_times : [];
-
-  function addTime() {
-    up({ indicator_alert_times: [...times, { anchor: "open", offset_min: 10 }] });
-  }
-  function updTime(i, patch) {
-    const next = times.map((t, idx) => (idx === i ? { ...t, ...patch } : t));
-    up({ indicator_alert_times: next });
-  }
-  function delTime(i) {
-    up({ indicator_alert_times: times.filter((_, idx) => idx !== i) });
-  }
-
+  const levels = Array.isArray(s.drawdown_levels) ? s.drawdown_levels : [10, 20, 30];
+  const lookbackSlider = lookbackToSlider(s.ath_lookback);
   const tgLink = TELEGRAM_BOT_USERNAME
     ? `https://t.me/${TELEGRAM_BOT_USERNAME}?start=${profile.id}`
     : null;
 
   return (
     <>
-      {/* 텔레그램 */}
+      {/* ① 알림 채널 & 알림 켜기/끄기 */}
       <div className="card">
-        <h2>텔레그램 알림</h2>
-        {profile.telegram_linked ? (
-          <p className="muted">✅ 텔레그램이 연결되었습니다. 알림이 이 계정으로 전송됩니다.</p>
-        ) : tgLink ? (
-          <>
-            <p className="muted" style={{ marginBottom: 12 }}>
-              아래 버튼을 눌러 봇과 대화를 시작하면 알림 수신이 연결됩니다.
+        <h2>알림 설정</h2>
+
+        {/* 텔레그램 */}
+        <div style={{ marginBottom: 14 }}>
+          {profile.telegram_linked ? (
+            <div className="tg-connected">
+              <div className="tg-name">
+                <span className="tg-dot" />
+                텔레그램 연결됨
+                {profile.telegram_display_name && (
+                  <span style={{ color: "var(--text-dim)", fontWeight: 400 }}>
+                    ({profile.telegram_display_name})
+                  </span>
+                )}
+              </div>
+              <button
+                className="btn-danger"
+                style={{ fontSize: 12, padding: "5px 10px" }}
+                onClick={unlinkTelegram}
+                disabled={unlinking}
+              >
+                {unlinking ? "해제 중…" : "연결 끊기"}
+              </button>
+            </div>
+          ) : tgLink ? (
+            <div>
+              <p className="muted" style={{ margin: "0 0 10px", fontSize: 13 }}>
+                아래 버튼을 눌러 봇과 대화를 시작하면 알림이 연결됩니다.
+              </p>
+              <a
+                className="btn-primary"
+                href={tgLink}
+                target="_blank"
+                rel="noreferrer"
+                style={{ textDecoration: "none", display: "inline-block", fontSize: 13 }}
+              >
+                텔레그램 봇 연결하기
+              </a>
+              <p className="hint" style={{ marginTop: 6 }}>
+                연결 후 이 페이지를 새로고침하면 상태가 갱신됩니다.
+              </p>
+            </div>
+          ) : (
+            <p className="muted" style={{ fontSize: 13 }}>
+              봇 주소가 설정되지 않았습니다. 관리자에게 문의하세요.
             </p>
-            <a
-              className="btn-primary"
-              href={tgLink}
-              target="_blank"
-              rel="noreferrer"
-              style={{ textDecoration: "none", display: "inline-block" }}
-            >
-              텔레그램 봇 연결하기
-            </a>
-            <p className="hint">연결 후 이 페이지를 새로고침하면 상태가 갱신됩니다.</p>
-          </>
-        ) : (
-          <p className="muted">봇 주소가 설정되지 않았습니다. 관리자에게 문의하세요.</p>
-        )}
-      </div>
-
-      {/* 매수 신호 기본값 */}
-      <div className="card">
-        <h2>ATH 대비 하락율 알림 기준</h2>
-        <div className="field">
-          <label>하락 레벨 (%)</label>
-          <input
-            value={(s.drawdown_levels ?? []).join(", ")}
-            onChange={(e) =>
-              up({
-                drawdown_levels: e.target.value
-                  .split(",")
-                  .map((x) => parseInt(x.trim()))
-                  .filter(Boolean),
-              })
-            }
-          />
-          <div className="hint">
-            ATH 대비 이 % 하락 시 알림. 쉼표로 구분. (예: 10, 20, 30)
-          </div>
+          )}
         </div>
-        <div className="field">
-          <label>구간 유지 재알림 간격</label>
-          <div className="slider-wrap">
-            <input
-              type="range"
-              min="0"
-              max="120"
-              step="5"
-              value={s.redrawdown_repeat_interval ?? 30}
-              onChange={(e) =>
-                up({ redrawdown_repeat_interval: parseInt(e.target.value) })
-              }
-            />
-            <span className="slider-val">
-              {(s.redrawdown_repeat_interval ?? 30) === 0
-                ? "끔"
-                : `${s.redrawdown_repeat_interval ?? 30}분`}
-            </span>
-          </div>
-          <div className="hint">
-            하락 구간에 머무는 동안 이 간격으로 다시 알림. 0이면 진입 시 1회만.
-          </div>
-        </div>
-      </div>
 
-      {/* ATH 기준 */}
-      <div className="card">
-        <h2>전고점(ATH) 기준</h2>
-        <div className="field">
-          <label>산정 기간</label>
-          <select
-            value={s.ath_lookback}
-            onChange={(e) => up({ ath_lookback: e.target.value })}
-          >
-            {LOOKBACKS.map((l) => (
-              <option key={l.v} value={l.v}>
-                {l.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label>갱신 임계 (%)</label>
-          <input
-            type="number"
-            value={s.ath_reset_pct}
-            onChange={(e) => up({ ath_reset_pct: parseFloat(e.target.value) })}
-          />
-          <div className="hint">
-            신고가가 이 % 이상 초과 상승 후 다시 무너질 때만 ATH를 갱신합니다(노이즈 방지).
-          </div>
-        </div>
-      </div>
+        <hr className="divider" />
 
-      {/* 기술적 매수신호 알림 시각 */}
-      <div className="card">
-        <h2>기술적 매수신호 알림 시각</h2>
-        <p className="hint" style={{ marginTop: 0, marginBottom: 14 }}>
-          DMI·거래량 신호를 판정할 시점을 지정합니다.
-          티커가 상장된 시장의 개장/폐장 시간 기준 (미국/한국 시장 지원).
-        </p>
-        {times.map((t, i) => (
-          <TimeRow key={i} t={t} i={i} onUpdate={updTime} onDelete={delTime} />
-        ))}
-        <button className="btn-ghost" onClick={addTime} style={{ marginTop: 10 }}>
-          + 시각 추가
-        </button>
-      </div>
-
-      {/* 알림 켜기/끄기 */}
-      <div className="card">
-        <h2>알림 켜기/끄기</h2>
+        {/* 알림 토글 */}
         {[
-          ["enable_buy_levels",    "ATH 대비 하락율 알림",      "ATH 대비 −N% 하락 시 매수 신호"],
-          ["enable_buy_indicators","기술적 매수∙매도신호 알림",  "DMI·스토캐스틱·거래량 기준 매수∙매도 신호"],
-          ["enable_sell_signals",  "매도 신호 알림",            "ATH 대비 +10%/+20%… 상승 시 매도 신호"],
-          ["enable_watchlist",     "국내주식 DMI 매수신호 알림","개별 종목 DMI 매수신호 감시"],
+          ["enable_buy_levels",     "ATH 대비 하락율∙매도 알림",    "ATH 대비 −N% 하락 및 ATH 도달/초과 매도 신호"],
+          ["enable_sell_signals",   "ATH 대비 상승 매도 신호 알림", "ATH 도달 시 및 ATH 대비 매 10% 초과 상승 시"],
+          ["enable_buy_indicators", "기술적 매수∙매도신호 알림",    "DMI·스토캐스틱·거래량 기준 매수∙매도 신호"],
+          ["enable_watchlist",      "국내주식 DMI 매수신호 알림",   "개별 종목 DMI 매수신호 감시"],
         ].map(([key, label, desc]) => (
           <div className="toggle-row" key={key}>
             <div>
-              <div style={{ fontWeight: 500 }}>{label}</div>
-              <div className="hint" style={{ margin: 0 }}>{desc}</div>
+              <div className="toggle-label">{label}</div>
+              <div className="toggle-desc">{desc}</div>
             </div>
             <label className="switch">
               <input
@@ -241,13 +243,130 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
             </label>
           </div>
         ))}
+
+        <hr className="divider" />
+
+        {/* 색상 반전 */}
+        <div className="toggle-row">
+          <div>
+            <div className="toggle-label">색상 반전</div>
+            <div className="toggle-desc">상승=빨강, 하락=초록으로 표시 (저장 시 적용)</div>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={!!s.color_inverted}
+              onChange={(e) => up({ color_inverted: e.target.checked })}
+            />
+            <span />
+          </label>
+        </div>
+      </div>
+
+      {/* ② ATH 대비 하락율∙매도 알림 설정 */}
+      <div className="card">
+        <h2>ATH 대비 하락율∙매도 알림 설정</h2>
+
+        {/* 산정 기간 + 갱신 임계 */}
+        <div className="field">
+          <label>전고점(ATH) 산정 기간</label>
+          <div className="slider-wrap">
+            <input
+              type="range"
+              min="1"
+              max="11"
+              step="1"
+              value={lookbackSlider}
+              onChange={(e) => up({ ath_lookback: sliderToLookback(parseInt(e.target.value)) })}
+            />
+            <span className="slider-val">{sliderLabel(lookbackSlider)}</span>
+          </div>
+        </div>
+
+        <div className="field">
+          <label>갱신 임계 (%)</label>
+          <div className="row-inline">
+            <input
+              type="number"
+              value={s.ath_reset_pct ?? 10}
+              onChange={(e) => up({ ath_reset_pct: parseFloat(e.target.value) })}
+              style={{ width: 80 }}
+            />
+          </div>
+          <div className="hint">
+            신고가가 현재 ATH 대비 이 % 이상 상승한 뒤 다시 내려올 때만 ATH가 갱신됩니다 (쌍봉·노이즈 방지).
+          </div>
+        </div>
+
+        {/* 하락 레벨 */}
+        <div className="field">
+          <label>하락 알림 레벨 (%)</label>
+          <ChipInput levels={levels} onChange={(next) => up({ drawdown_levels: next })} />
+          <div className="hint">ATH 대비 이 % 하락 시 알림. 숫자 입력 후 Enter.</div>
+        </div>
+
+        {/* 구간 유지 재알림 */}
+        <div className="field">
+          <label>구간 유지 재알림 간격</label>
+          <div className="slider-wrap">
+            <input
+              type="range"
+              min="0"
+              max="120"
+              step="5"
+              value={s.redrawdown_repeat_interval ?? 30}
+              onChange={(e) => up({ redrawdown_repeat_interval: parseInt(e.target.value) })}
+            />
+            <span className="slider-val">
+              {(s.redrawdown_repeat_interval ?? 30) === 0
+                ? "끔"
+                : `${s.redrawdown_repeat_interval ?? 30}분`}
+            </span>
+          </div>
+          <div className="hint">
+            하락 또는 매도 구간에 머무는 동안 이 간격으로 재알림. 0이면 진입 시 1회만.
+          </div>
+        </div>
+
+        <div className="hint" style={{ padding: "8px 10px", background: "var(--bg-elev)", borderRadius: 6, marginTop: 4 }}>
+          매도 알림: ATH 도달 시 + ATH 대비 매 10% 초과 상승 시.
+          ATH 대비 하락율∙매도 알림 분류에 등록된 티커가 대상입니다.
+        </div>
+      </div>
+
+      {/* ③ 기술적 신호 알림 설정 */}
+      <div className="card">
+        <h2>기술적 신호 알림 설정</h2>
+        <p className="hint" style={{ marginTop: 0, marginBottom: 14 }}>
+          DMI·거래량 신호를 판정할 시점을 지정합니다.
+          티커가 상장된 시장(미국/한국)의 개장·폐장 시간 기준으로 동작합니다.
+        </p>
+        {times.map((t, i) => (
+          <TimeRow
+            key={i}
+            t={t}
+            i={i}
+            onUpdate={(idx, patch) => {
+              const next = times.map((x, j) => (j === idx ? { ...x, ...patch } : x));
+              up({ indicator_alert_times: next });
+            }}
+            onDelete={(idx) => up({ indicator_alert_times: times.filter((_, j) => j !== idx) })}
+          />
+        ))}
+        <button
+          className="btn-ghost"
+          onClick={() => up({ indicator_alert_times: [...times, { anchor: "open", offset_min: 10 }] })}
+          style={{ marginTop: 10, fontSize: 13 }}
+        >
+          + 시각 추가
+        </button>
       </div>
 
       <button
         className="btn-primary"
         onClick={save}
         disabled={saving}
-        style={{ width: "100%", padding: 14 }}
+        style={{ width: "100%", padding: 13, marginTop: 4 }}
       >
         {saving ? "저장 중…" : "설정 저장"}
       </button>

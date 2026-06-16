@@ -16,7 +16,11 @@ function buildRatchet(closes, resetPct = 10) {
   return { ath, running_high: runningHigh, exceeded_threshold: exceeded };
 }
 
-const RANGE_MAP = { "5y": "5y", "3y": "3y", "52w": "1y", "all": "max" };
+const RANGE_MAP = {
+  "1y": "1y", "2y": "2y", "3y": "5y", "4y": "5y", "5y": "5y",
+  "6y": "10y", "7y": "10y", "8y": "10y", "9y": "10y", "10y": "10y",
+  "52w": "1y", "all": "max",
+};
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -26,7 +30,7 @@ export default async function handler(req, res) {
   if (!ticker || !auth) return res.status(400).json({ error: "missing params" });
 
   const SUPABASE_URL  = process.env.VITE_SUPABASE_URL  || process.env.SUPABASE_URL;
-  const SUPABASE_ANON = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  const SUPABASE_ANON = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
   if (!SUPABASE_URL || !SUPABASE_ANON)
     return res.status(500).json({ error: "supabase config missing" });
 

@@ -3,11 +3,31 @@
 공용 봇 하나로 각 사용자의 chat_id에 발송.
 """
 import os
+import re
 import urllib.request
 import urllib.parse
 import json
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+
+def _is_kr(ticker):
+    return bool(re.match(r'^\d{6}', ticker.split('.')[0]))
+
+
+def _ticker_display(ticker, name=None):
+    """한국 주식은 코드 + 국문명, 나머지는 티커만."""
+    base = ticker.split('.')[0]
+    if _is_kr(ticker) and name and name not in (ticker, base):
+        return f"{base} {name}"
+    return base
+
+
+def _fmt_price(price, ticker):
+    """KRW는 정수, USD는 소숫점 2자리, 천단위 콤마."""
+    if _is_kr(ticker):
+        return f"{int(round(price)):,}"
+    return f"{price:,.2f}"
 
 
 def send_message(chat_id, text):
@@ -32,25 +52,37 @@ def send_message(chat_id, text):
         return False
 
 
-def format_buy_level(ticker, display, level, price, ath, dd):
+def format_buy_level(ticker, level, price, ath, dd, name=None):
+    disp = _ticker_display(ticker, name)
+    p = _fmt_price(price, ticker)
+    a = _fmt_price(ath, ticker)
     return (
-        f"🔻 <b>{ticker} 매수 신호</b>\n"
-        f"고점 대비 <b>-{level}%</b> 도달\n"
-        f"현재가 {price:.2f} (ATH {ath:.2f}, {dd:+.1f}%)\n"
-        f"참고: {display}"
+        f"🔻 <b>{disp} 매수 신호</b>\n"
+        f"ATH 대비 <b>-{level}%</b> 하락 도달\n"
+        f"현재가 {p}  |  ATH {a} ({dd:+.1f}%)"
     )
 
 
-def format_sell(ticker, level, price, ath, gain):
+def format_sell(ticker, level, price, ath, gain, name=None):
+    disp = _ticker_display(ticker, name)
+    p = _fmt_price(price, ticker)
+    a = _fmt_price(ath, ticker)
+    if level == 0:
+        return (
+            f"🔺 <b>{disp} 매도 신호</b>\n"
+            f"ATH <b>도달</b>\n"
+            f"현재가 {p}  |  ATH {a}"
+        )
     return (
-        f"🔺 <b>{ticker} 매도 신호</b>\n"
-        f"고점 대비 <b>+{level}%</b> 초과 상승\n"
-        f"현재가 {price:.2f} (ATH {ath:.2f}, +{gain:.1f}%)"
+        f"🔺 <b>{disp} 매도 신호</b>\n"
+        f"ATH 대비 <b>+{level}%</b> 초과 상승\n"
+        f"현재가 {p}  |  ATH {a}"
     )
 
 
-def format_indicator(ticker, signals):
-    lines = [f"📊 <b>{ticker} 보조지표</b>"]
+def format_indicator(ticker, signals, name=None):
+    disp = _ticker_display(ticker, name)
+    lines = [f"📊 <b>{disp} 보조지표 신호</b>"]
     if signals.get("dmi_buy"):
         v = signals["dmi_values"]
         lines.append(f"• DMI 매수신호 (DI-={v['minus_di']}, ADX={v['adx']})")
@@ -59,9 +91,11 @@ def format_indicator(ticker, signals):
     return "\n".join(lines)
 
 
-def format_watchlist(ticker, signals):
+def format_watchlist(ticker, signals, name=None):
+    disp = _ticker_display(ticker, name)
     v = signals["dmi_values"]
     return (
-        f"⭐ <b>{ticker} 매수신호</b> (관찰종목)\n"
-        f"DMI: DI-={v['minus_di']}, ADX={v['adx']}"
+        f"⭐ <b>개별주식 DMI 매수 신호</b>\n"
+        f"[{disp} DMI 매수신호 발생]\n"
+        f"DI-={v['minus_di']}, ADX={v['adx']}"
     )
