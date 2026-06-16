@@ -579,18 +579,27 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
   const markerLeft = g.posOf(g.c);
   const zeroLeft = g.posOf(0);
   const fillColor = g.c < 0 ? "var(--down)" : "var(--up)";
-  // 전일 종가 대비 등락에 따라 화살표 방향·색 결정
-  const dayChg = prevClose && prevClose > 0 ? price - prevClose : 0;
-  const arrowUp = dayChg >= 0;
+  const dayChg = prevClose && prevClose > 0 ? pct(price, prevClose) : null;
+  const arrowUp = dayChg == null ? true : dayChg >= 0;
   const arrowColor = arrowUp ? "var(--up)" : "var(--down)";
   const arrowChar = arrowUp ? "▲" : "▼";
   return (
     <div className="gauge">
-      <div className="gauge-head">
-        <span className="gauge-side">매수</span>
-        <span className="gauge-ath">ATH {fmtPrice(ath, sym)}</span>
-        <span className="gauge-side">매도</span>
+      {/* ① 바 위: 백분율 눈금 라벨 + ATH 가격 */}
+      <div className="gauge-above">
+        <div className="gauge-ath-tag" style={{ left: `${zeroLeft}%` }}>
+          <span className="gauge-ath-name">ATH</span>
+          <span className="gauge-ath-val">{fmtPrice(ath, sym)}</span>
+        </div>
+        {g.marks.filter((m) => m !== 0).map((m) => (
+          <span key={m} className="gauge-pct-label" style={{ left: `${g.posOf(m)}%` }}>
+            {m > 0 ? `+${m}` : m}
+          </span>
+        ))}
+        <span className="gauge-pct-unit">(%)</span>
       </div>
+
+      {/* ② 바 트랙 */}
       <div className="gauge-track">
         <div className="gauge-fill" style={{
           left: `${Math.min(zeroLeft, markerLeft)}%`,
@@ -598,25 +607,29 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
           background: fillColor,
         }} />
         {g.marks.map((m) => (
-          <div key={m} className={`gauge-tick ${m === 0 ? "ath" : ""}`} style={{ left: `${g.posOf(m)}%` }}>
-            <span className="gauge-tick-label">{m === 0 ? "ATH" : m > 0 ? `+${m}` : m}</span>
-          </div>
+          <div key={m} className={`gauge-tick ${m === 0 ? "ath" : ""}`} style={{ left: `${g.posOf(m)}%` }} />
         ))}
-        <div className={`gauge-marker ${arrowUp ? "above" : "below"}`}
-             style={{ left: `${markerLeft}%`, color: arrowColor }}>
-          {arrowChar}
+      </div>
+
+      {/* ③ 바 아래: 현재가 ▲/▼ 등락% */}
+      <div className="gauge-below">
+        <div className="gauge-marker-group" style={{ left: `${markerLeft}%` }}>
+          <span className="gauge-cur-price">{fmtPrice(price, sym)}</span>
+          <span className="gauge-arrow" style={{ color: arrowColor }}>{arrowChar}</span>
+          {dayChg != null && (
+            <span className="gauge-day-chg" style={{ color: arrowColor }}>{fmtPct(dayChg)}</span>
+          )}
         </div>
       </div>
-      <div className="gauge-foot">
-        <span className="gauge-cur">현재 {fmtPrice(price, sym)} ({g.c >= 0 ? "+" : ""}{g.c.toFixed(2)}%)</span>
-        <span className="gauge-cap">
-          {g.capLabel}
-          {g.capDist && (
-            <span style={{ color: g.capDir === "down" ? "var(--down)" : "var(--up)", marginLeft: 4 }}>
-              {g.capDist}
-            </span>
-          )}
-        </span>
+
+      {/* ④ 캡션 */}
+      <div className="gauge-cap-row">
+        <span className="gauge-cap-label">{g.capLabel}</span>
+        {g.capDist && (
+          <span className="gauge-cap-dist" style={{ color: g.capDir === "down" ? "var(--down)" : "var(--up)" }}>
+            {g.capDist}
+          </span>
+        )}
       </div>
     </div>
   );
