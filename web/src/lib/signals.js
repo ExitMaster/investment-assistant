@@ -164,6 +164,18 @@ function volumeBreakout(high, low, close, vol, end, lookback = 126, confirm = 3,
 
 function round1(x) { return Math.round(x * 10) / 10; }
 
+// 엔진의 deepest_level / sell_baseline 헬퍼
+function deepestBuyLevel(dd, levels) {
+  let d = 0;
+  for (const L of levels) { if (dd >= L) d = L; }
+  return d;
+}
+function deepestSellLevel(gain, sellLevels) {
+  let d = -1;
+  for (const L of sellLevels) { if (gain >= L) d = L; }
+  return d;
+}
+
 // ── 백테스트 메인 ──
 // data: {time, open, high, low, close, volume}
 // settings: {resetPct, levels, sellLevels, dmiThreshold, stochParams, volumeLookback}
@@ -182,10 +194,6 @@ export function runBacktest(data, settings = {}) {
   const { slowK } = stochSlow(high, low, close, sp[0], sp[1], sp[2]);
 
   const events = [];
-  // ATH가 바뀌어야만 같은 레벨 재발화 허용 (엔진의 level_last_alert와 동일 로직)
-  const buyFiredAtAth = {};   // level → 마지막으로 발화한 ATH 값
-  const sellFiredAtAth = {};  // level → 마지막으로 발화한 ATH 값
-
   // 보조지표 신호 중복 억제 (false→true 전환 시에만)
   let prevDmiBuy = false, prevDmiImm = false, prevBull = false, prevBear = false, prevLowVol = false, prevHighVol = false;
 
@@ -193,13 +201,19 @@ export function runBacktest(data, settings = {}) {
 
   for (let i = 1; i < n; i++) {
     const a = ath[i];
-    const dd = ((a - close[i]) / a) * 100; // 하락률(양수=하락)
-    const gain = ((close[i] - a) / a) * 100; // ATH 초과 상승률
+    const prevA = ath[i - 1];
+    const dd = Math.max(0, ((a - close[i]) / a) * 100);       // 하락률(양수=하락)
+    const gain = ((close[i] - a) / a) * 100;                  // ATH 초과 상승률
 
-    // 매수 레벨: 동일 ATH에서 레벨당 1회만 (ATH가 바뀌면 재발화)
+    // 전일 종가 기준 baseline — 엔진의 is_new_day 당시 baseline_level/sell_baseline와 동일
+    const prevDd = Math.max(0, ((prevA - close[i - 1]) / prevA) * 100);
+    const prevGain = (close[i - 1] - prevA) / prevA * 100;
+    const buyBaseline = deepestBuyLevel(prevDd, levels);    // 이미 도달한 가장 깊은 매수레벨
+    const sellBaseline = deepestSellLevel(prevGain, sellLevels); // 이미 활성인 가장 높은 매도레벨
+
+    // 매수 레벨: baseline보다 깊은 레벨만 발화 (엔진 evaluate_buy_levels와 동일)
     for (const L of levels) {
-      if (dd >= L && buyFiredAtAth[L] !== a) {
-        buyFiredAtAth[L] = a;
+      if (dd >= L && L > buyBaseline) {
         events.push({
           time: time[i], type: "buy_level", price: close[i],
           label: `매수 -${L}%`,
@@ -208,10 +222,9 @@ export function runBacktest(data, settings = {}) {
       }
     }
 
-    // 매도 레벨: 동일 ATH에서 레벨당 1회만 (ATH가 바뀌면 재발화)
+    // 매도 레벨: baseline보다 높은 레벨만 발화 (엔진 sell_baseline과 동일)
     for (const L of sellLevels) {
-      if (gain >= L && sellFiredAtAth[L] !== a) {
-        sellFiredAtAth[L] = a;
+      if (gain >= L && L > sellBaseline) {
         events.push({
           time: time[i], type: "sell", price: close[i],
           label: L === 0 ? "매도 ATH" : `매도 +${L}%`,
