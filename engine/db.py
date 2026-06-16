@@ -55,6 +55,14 @@ def get_settings(user_id):
     return rows[0] if rows else None
 
 
+def get_index_tickers(user_id):
+    """index_tickers 테이블에서 사용자의 ATH 감시 티커 목록 반환."""
+    rows = _request("GET", "index_tickers", params={
+        "user_id": f"eq.{user_id}", "select": "ticker",
+    })
+    return [r["ticker"] for r in (rows or [])]
+
+
 def get_watchlist(user_id):
     rows = _request("GET", "watchlist", params={
         "user_id": f"eq.{user_id}", "select": "ticker",
