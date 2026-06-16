@@ -274,9 +274,12 @@ input, select {
 }
 .gauge-tick.ath .gauge-tick-label { color: var(--text-dim); font-weight: 700; }
 .gauge-marker {
-  position: absolute; top: -17px; transform: translateX(-50%);
+  position: absolute; transform: translateX(-50%);
   font-size: 11px; line-height: 1; pointer-events: none;
+  /* ▲ 일 때: 바 위에 (top), ▼ 일 때: 바 아래에 (bottom) */
 }
+.gauge-marker.above { top: -16px; }
+.gauge-marker.below { bottom: -16px; }
 .gauge-foot {
   display: flex; justify-content: space-between; align-items: center;
   margin-top: 26px; font-size: 11px; gap: 8px;

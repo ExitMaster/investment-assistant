@@ -526,6 +526,11 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
   const markerLeft = g.posOf(g.c);
   const zeroLeft = g.posOf(0);
   const fillColor = g.c < 0 ? "var(--down)" : "var(--up)";
+  // 전일 종가 대비 등락에 따라 화살표 방향·색 결정
+  const dayChg = prevClose && prevClose > 0 ? price - prevClose : 0;
+  const arrowUp = dayChg >= 0;
+  const arrowColor = arrowUp ? "var(--up)" : "var(--down)";
+  const arrowChar = arrowUp ? "▲" : "▼";
   return (
     <div className="gauge">
       <div className="gauge-head">
@@ -544,11 +549,14 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
             <span className="gauge-tick-label">{m === 0 ? "ATH" : m > 0 ? `+${m}` : m}</span>
           </div>
         ))}
-        <div className="gauge-marker" style={{ left: `${markerLeft}%`, color: fillColor }}>▲</div>
+        <div className={`gauge-marker ${arrowUp ? "above" : "below"}`}
+             style={{ left: `${markerLeft}%`, color: arrowColor }}>
+          {arrowChar}
+        </div>
       </div>
       <div className="gauge-foot">
         <span className="gauge-cur">현재 {fmtPrice(price, sym, true)} ({g.c >= 0 ? "+" : ""}{g.c.toFixed(1)}%)</span>
-        <span className="gauge-cap" style={{ color: g.capDir === "down" ? "var(--down)" : "var(--up)" }}>{g.caption}</span>
+        <span className="gauge-cap">{g.caption}</span>
       </div>
     </div>
   );
