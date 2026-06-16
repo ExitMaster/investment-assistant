@@ -177,7 +177,7 @@ function PerTickerActions({ indexTickers, tickerActions, setTickerActions, level
   );
 }
 
-export default function Settings({ profile, flash, onTelegramLinked }) {
+export default function Settings({ profile, flash, onTelegramLinked, isAdmin, onAdmin }) {
   const [s, setS] = useState(null);
   const [indexTickers, setIndexTickers] = useState([]);
   const [tickerActions, setTickerActions] = useState({});
@@ -276,33 +276,31 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
       <div className="card">
         <h2>표시 설정</h2>
 
-        <p className="hint" style={{ marginTop: 0 }}>
-          각 신호의 켜기/끄기는 대시보드 각 패널의 🔔 종 아이콘에서 설정합니다.
-          (탭: 전체 켜기/끄기 · 길게 누르기: 세부 설정) · 텔레그램 연결은 알림 탭에 있습니다.
-        </p>
-
-        {/* 색상 표시 방식 — 직관적 토글 */}
-        <div className="field">
-          <label>등락 색상</label>
-          <div className="color-toggle">
-            <button
-              className={!s.color_inverted ? "active" : ""}
-              onClick={() => up({ color_inverted: false })}
-            >
-              <span style={{ color: "#16a34a" }}>▲ 상승</span>
-              <span style={{ color: "#ef4444" }}>▼ 하락</span>
-              <small>기본</small>
-            </button>
-            <button
-              className={s.color_inverted ? "active" : ""}
-              onClick={() => up({ color_inverted: true })}
-            >
-              <span style={{ color: "#ef4444" }}>▲ 상승</span>
-              <span style={{ color: "#16a34a" }}>▼ 하락</span>
-              <small>반전</small>
-            </button>
+        {/* 등락 색상 — 단일 토글 */}
+        <div className="toggle-row">
+          <div>
+            <div className="toggle-label">등락 색상 반전</div>
+            <div className="toggle-desc">
+              {s.color_inverted
+                ? <><span style={{ color: "#ef4444" }}>▲ 상승 빨강</span> · <span style={{ color: "#16a34a" }}>▼ 하락 초록</span></>
+                : <><span style={{ color: "#16a34a" }}>▲ 상승 초록</span> · <span style={{ color: "#ef4444" }}>▼ 하락 빨강</span></>}
+            </div>
           </div>
+          <label className="switch">
+            <input type="checkbox" checked={!!s.color_inverted}
+              onChange={(e) => up({ color_inverted: e.target.checked })} />
+            <span />
+          </label>
         </div>
+
+        {isAdmin && onAdmin && (
+          <>
+            <hr className="divider" />
+            <button className="btn-ghost" style={{ fontSize: 13 }} onClick={onAdmin}>
+              관리자 페이지 →
+            </button>
+          </>
+        )}
       </div>
 
       {/* ② ATH 대비 하락율∙매도 알림 설정 */}

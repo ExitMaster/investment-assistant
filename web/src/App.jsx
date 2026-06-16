@@ -134,22 +134,6 @@ export default function App() {
             >
               <BellIcon />
             </button>
-            {isAdmin && (
-              <button
-                className={`icon-btn ${screen === "admin" ? "active" : ""}`}
-                onClick={() => setScreen("admin")}
-                title="관리자"
-              >
-                <ShieldIcon />
-              </button>
-            )}
-            <button
-              className="icon-btn"
-              onClick={() => supabase.auth.signOut()}
-              title="로그아웃"
-            >
-              <LogoutIcon />
-            </button>
             <button
               className="icon-btn"
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
@@ -163,6 +147,13 @@ export default function App() {
               title="설정"
             >
               <GearIcon />
+            </button>
+            <button
+              className="icon-btn"
+              onClick={() => supabase.auth.signOut()}
+              title="로그아웃"
+            >
+              <LogoutIcon />
             </button>
           </div>
         </div>
@@ -182,6 +173,8 @@ export default function App() {
             profile={profile}
             flash={flash}
             onTelegramLinked={loadProfile}
+            isAdmin={isAdmin}
+            onAdmin={() => setScreen("admin")}
           />
         )}
         {screen === "admin" && isAdmin && <Admin flash={flash} />}

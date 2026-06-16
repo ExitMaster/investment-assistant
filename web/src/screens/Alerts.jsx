@@ -119,8 +119,6 @@ function MutePanel({ uid }) {
         </label>
       </div>
 
-      <hr className="divider" />
-
       {/* 일시중지 타이머 */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, opacity: masterOff ? 0.4 : 1 }}>
         <button
@@ -149,14 +147,14 @@ function MutePanel({ uid }) {
                 {fmtRemain(mutedUntil.getTime() - now)} 남음
               </div>
               <div className="hint" style={{ fontSize: 11, marginTop: 4 }}>
-                알림차단: 탭 +30분 · 길게 눌러 시간선택
+                일시중지: 탭 +30분 · 길게 눌러 시간선택
               </div>
             </>
           ) : (
             <>
               <div style={{ fontWeight: 600 }}>알림 켜짐</div>
               <div className="hint" style={{ fontSize: 11, marginTop: 2 }}>
-                알림차단: 탭 +30분 · 길게 눌러 시간선택
+                일시중지: 탭 +30분 · 길게 눌러 시간선택
               </div>
             </>
           )}
