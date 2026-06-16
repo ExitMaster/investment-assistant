@@ -424,8 +424,8 @@ export default function Settings({ profile, flash, onTelegramLinked, isAdmin, on
 
         <div className="toggle-row">
           <div>
-            <div className="toggle-label">임박 알림</div>
-            <div className="toggle-desc">ATH 신호가 다음 매수 또는 매도레벨에 설정한 %p로 근접하면 미리 1회 알림</div>
+            <div className="toggle-label">ATH 레벨 임박 알림</div>
+            <div className="toggle-desc">현재가가 다음 ATH 매수 또는 매도 레벨에 설정한 %p 이내로 근접하면 미리 1회 알림 (DMI 신호와 무관)</div>
           </div>
           <label className="switch">
             <input type="checkbox" checked={!!s.prealert_enabled}

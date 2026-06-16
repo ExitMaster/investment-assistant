@@ -13,7 +13,7 @@ const GROUPS = [
   { key: "buy_level",    label: "ATH 매수",    color: "#22c55e" },
   { key: "sell",         label: "ATH 매도",    color: "#ef4444" },
   { key: "dmi_buy",      label: "DMI 매수",    color: "#3b82f6" },
-  { key: "dmi_imminent", label: "DMI 임박",    color: "#60a5fa" },
+  { key: "dmi_imminent", label: "DMI 신호임박", color: "#60a5fa" },
   { key: "bull_div",     label: "상승 Div",    color: "#14b8a6" },
   { key: "bear_div",     label: "하락 Div",    color: "#f97316" },
   { key: "low_vol",      label: "저점 Vol",    color: "#a855f7" },
