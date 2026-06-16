@@ -120,7 +120,7 @@ def run_intraday():
         if not ticker_rows:
             continue
 
-        levels = st.get("drawdown_levels", [10, 20, 30])
+        levels = st.get("drawdown_levels", [10, 20, 30, 40])
         reset_pct = float(st.get("ath_reset_pct", 10))
         repeat = int(st.get("redrawdown_repeat_interval", 30))
         buy_enabled = st.get("enable_buy_levels", True)

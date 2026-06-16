@@ -11,7 +11,7 @@ export default function Admin({ flash }) {
     setLoading(true);
     const { data } = await supabase
       .from("profiles")
-      .select("id,email,display_name,role,status,telegram_linked,created_at")
+      .select("id,email,display_name,role,status,telegram_linked,telegram_display_name,created_at")
       .order("created_at", { ascending: false });
     setUsers(data ?? []);
     setLoading(false);
@@ -43,7 +43,12 @@ export default function Admin({ flash }) {
               <div style={{ fontWeight: 600 }}>
                 {u.display_name || u.email}
                 {u.role === "admin" && <span className="chip">admin</span>}
-                {u.telegram_linked && <span className="chip">TG</span>}
+                {u.telegram_linked
+                  ? <span className="chip" style={{ background: "var(--up-bg)", color: "var(--up)" }}>
+                      TG {u.telegram_display_name ? `· ${u.telegram_display_name}` : "연결됨"}
+                    </span>
+                  : <span className="chip" style={{ color: "var(--text-faint)" }}>TG 미연결</span>
+                }
               </div>
               <div className="t-sub">{u.email}</div>
             </div>
