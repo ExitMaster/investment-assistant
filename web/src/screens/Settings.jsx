@@ -114,17 +114,8 @@ function defAction(level) { return DEFAULT_BUY_ACTIONS[level] || { product: "", 
 function getAction(actions, level) { return (actions || {})[level] || defAction(level); }
 
 function ActionTable({ levels, actions, onChange }) {
-  const [unify, setUnify] = useState("");
   function setCell(level, key, val) {
     onChange({ ...(actions || {}), [level]: { ...getAction(actions, level), [key]: val } });
-  }
-  function applyUnify() {
-    const p = unify.trim();
-    if (!p) return;
-    const next = { ...(actions || {}) };
-    levels.forEach((L) => { next[L] = { ...getAction(actions, L), product: p }; });
-    onChange(next);
-    setUnify("");
   }
   return (
     <div className="action-table">
@@ -144,10 +135,6 @@ function ActionTable({ levels, actions, onChange }) {
           </div>
         );
       })}
-      <div className="action-unify">
-        <input value={unify} placeholder="종목 통일" onChange={(e) => setUnify(e.target.value)} />
-        <button className="btn-ghost" style={{ fontSize: 12, whiteSpace: "nowrap" }} onClick={applyUnify}>전 레벨 적용</button>
-      </div>
     </div>
   );
 }

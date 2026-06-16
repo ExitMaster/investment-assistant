@@ -558,7 +558,7 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
         </div>
       </div>
       <div className="gauge-foot">
-        <span className="gauge-cur">현재 {fmtPrice(price, sym, true)} ({g.c >= 0 ? "+" : ""}{g.c.toFixed(1)}%)</span>
+        <span className="gauge-cur">현재 {fmtPrice(price, sym)} ({g.c >= 0 ? "+" : ""}{g.c.toFixed(2)}%)</span>
         <span className="gauge-cap">
           {g.capLabel}
           {g.capDist && (
