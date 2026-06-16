@@ -53,14 +53,15 @@ export default function Backtest({ profile }) {
   // 사용자 티커 + 설정 로드
   useEffect(() => {
     (async () => {
-      const [{ data: idx }, { data: ind }, { data: st }] = await Promise.all([
+      const [{ data: idx }, { data: ind }, { data: wl }, { data: st }] = await Promise.all([
         supabase.from("index_tickers").select("ticker,name").eq("user_id", uid).order("sort_order"),
         supabase.from("indicator_tickers").select("ticker,name").eq("user_id", uid).order("sort_order"),
+        supabase.from("watchlist").select("ticker,name").eq("user_id", uid).order("sort_order"),
         supabase.from("settings").select("*").eq("user_id", uid).single(),
       ]);
       const seen = new Set();
       const merged = [];
-      for (const r of [...(idx || []), ...(ind || [])]) {
+      for (const r of [...(idx || []), ...(ind || []), ...(wl || [])]) {
         if (seen.has(r.ticker)) continue;
         seen.add(r.ticker);
         merged.push(r);
