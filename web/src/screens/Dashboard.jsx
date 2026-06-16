@@ -69,104 +69,112 @@ const GripIcon = () => (
     <circle cx="15" cy="18" r="1" fill="currentColor" stroke="none"/>
   </svg>
 );
+const EditIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+);
 
-/* ── 드래그 정렬 훅 (데스크톱 + 모바일 long-press) ── */
-function useDragSort(externalItems, onCommit) {
+/* ── 드래그 정렬 훅 (데스크톱 HTML5 + 모바일 long-press, edit 모드 전용) ── */
+function useDragSort(externalItems, onCommit, enabled) {
   const [list, setList] = useState(externalItems);
   const [activeIdx, setActiveIdx] = useState(null);
   const [overIdx, setOverIdx] = useState(null);
   const containerRef = useRef(null);
-  const timer = useRef(null);
-  const onCommitRef = useRef(onCommit);
-  // 모든 가변 drag 상태를 ref에 보관 (stale closure 방지)
-  const drag = useRef({ active: false, from: null, over: null, startX: 0, startY: 0, list: externalItems });
+  // 모든 가변 상태를 단일 ref에 보관 (useEffect 내 stale closure 완전 방지)
+  const s = useRef({
+    active: false, from: null, over: null,
+    startX: 0, startY: 0,
+    timer: null,
+    list: externalItems,
+    onCommit,
+  });
 
-  useEffect(() => { onCommitRef.current = onCommit; }, [onCommit]);
-  useEffect(() => { drag.current.list = externalItems; setList(externalItems); }, [externalItems]);
+  useEffect(() => { s.current.onCommit = onCommit; }, [onCommit]);
+  useEffect(() => { s.current.list = externalItems; setList(externalItems); }, [externalItems]);
 
-  function commit(from, to) {
+  function doCommit(from, to) {
     if (from == null || to == null || from === to) return;
-    const next = [...drag.current.list];
+    const next = [...s.current.list];
     const [x] = next.splice(from, 1);
     next.splice(to, 0, x);
-    drag.current.list = next;
+    s.current.list = next;
     setList(next);
-    onCommitRef.current?.(next);
+    s.current.onCommit?.(next);
   }
 
-  // 데스크톱 드래그
+  // rowProps: 데스크톱 draggable + 모바일 long-press (행 전체에 적용)
   function rowProps(idx) {
+    if (!enabled) return { "data-row-idx": String(idx) };
     return {
       draggable: true,
       "data-row-idx": String(idx),
-      onDragStart: () => { drag.current.from = idx; setActiveIdx(idx); },
+      onDragStart: () => { s.current.from = idx; setActiveIdx(idx); },
       onDragOver: (e) => {
         e.preventDefault();
-        if (idx !== drag.current.from) { drag.current.over = idx; setOverIdx(idx); }
+        if (idx !== s.current.from) { s.current.over = idx; setOverIdx(idx); }
       },
       onDrop: (e) => {
         e.preventDefault();
-        commit(drag.current.from, drag.current.over);
-        drag.current.from = null; drag.current.over = null;
+        doCommit(s.current.from, s.current.over);
+        s.current.from = null; s.current.over = null;
         setActiveIdx(null); setOverIdx(null);
       },
       onDragEnd: () => {
-        drag.current.from = null; drag.current.over = null;
+        s.current.from = null; s.current.over = null;
         setActiveIdx(null); setOverIdx(null);
       },
-    };
-  }
-
-  // 모바일 핸들 터치 시작
-  function handleProps(idx) {
-    return {
       onTouchStart: (e) => {
         const t = e.touches[0];
-        drag.current.startX = t.clientX;
-        drag.current.startY = t.clientY;
-        drag.current.active = false;
-        drag.current.from = null;
-        drag.current.over = idx;
-        timer.current = setTimeout(() => {
-          drag.current.active = true;
-          drag.current.from = idx;
-          drag.current.over = idx;
+        s.current.startX = t.clientX;
+        s.current.startY = t.clientY;
+        s.current.active = false;
+        clearTimeout(s.current.timer);
+        s.current.timer = setTimeout(() => {
+          s.current.active = true;
+          s.current.from = idx;
+          s.current.over = idx;
           setActiveIdx(idx);
           setOverIdx(idx);
           try { navigator.vibrate(40); } catch {}
-        }, 500);
+        }, 450);
       },
     };
   }
 
-  // 전역 터치 이벤트 (drag 중 스크롤 방지 + 타겟 행 감지)
+  // 전역 터치 이벤트 — 드래그 중 스크롤 방지 + 타겟 행 감지 + 커밋
   useEffect(() => {
     function onMove(e) {
       const t = e.touches[0];
-      if (!drag.current.active) {
-        // 8px 이상 움직이면 long-press 취소 (스크롤 구분)
-        const dx = Math.abs(t.clientX - drag.current.startX);
-        const dy = Math.abs(t.clientY - drag.current.startY);
-        if (dx > 8 || dy > 8) clearTimeout(timer.current);
+      if (!s.current.active) {
+        const dx = Math.abs(t.clientX - s.current.startX);
+        const dy = Math.abs(t.clientY - s.current.startY);
+        if (dx > 8 || dy > 8) { clearTimeout(s.current.timer); }
         return;
       }
-      e.preventDefault(); // 드래그 중 페이지 스크롤 방지
+      e.preventDefault();
       const y = t.clientY;
-      containerRef.current?.querySelectorAll("[data-row-idx]").forEach(row => {
+      const rows = containerRef.current?.querySelectorAll("[data-row-idx]");
+      if (!rows) return;
+      rows.forEach(row => {
         const r = row.getBoundingClientRect();
         if (y >= r.top && y <= r.bottom) {
           const i = +row.dataset.rowIdx;
-          if (i !== drag.current.over) { drag.current.over = i; setOverIdx(i); }
+          if (i !== s.current.over) { s.current.over = i; setOverIdx(i); }
         }
       });
     }
     function onEnd() {
-      clearTimeout(timer.current);
-      if (drag.current.active) {
-        commit(drag.current.from, drag.current.over);
+      clearTimeout(s.current.timer);
+      if (s.current.active) {
+        doCommit(s.current.from, s.current.over);
       }
-      drag.current.active = false; drag.current.from = null; drag.current.over = null;
-      setActiveIdx(null); setOverIdx(null);
+      s.current.active = false;
+      s.current.from = null;
+      s.current.over = null;
+      setActiveIdx(null);
+      setOverIdx(null);
     }
     document.addEventListener("touchmove", onMove, { passive: false });
     document.addEventListener("touchend", onEnd);
@@ -176,9 +184,9 @@ function useDragSort(externalItems, onCommit) {
       document.removeEventListener("touchend", onEnd);
       document.removeEventListener("touchcancel", onEnd);
     };
-  }, []); // ref만 사용하므로 deps 없음
+  }, []); // ref만 사용 — deps 없음
 
-  return { list, containerRef, activeIdx, overIdx, rowProps, handleProps };
+  return { list, containerRef, activeIdx, overIdx, rowProps };
 }
 
 
@@ -443,7 +451,7 @@ function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
 }
 
 /* ── 티커 한 행 ── */
-function TickerRow({ sym, quotes, athMap, onRemove, dragRowProps, dragHandleProps, isDragging, isDragOver }) {
+function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDragging, isDragOver }) {
   const q = quotes[sym];
   const athRow = athMap[sym];
   const ath = athRow?.ath ?? null;
@@ -460,16 +468,21 @@ function TickerRow({ sym, quotes, athMap, onRemove, dragRowProps, dragHandleProp
     <div
       className="ticker-row"
       style={{
+        gridTemplateColumns: editMode ? "18px 1fr auto auto" : "1fr auto",
         opacity: isDragging ? 0.3 : 1,
         borderTop: isDragOver ? "2px solid var(--accent)" : undefined,
         marginTop: isDragOver ? -1 : undefined,
         transition: "opacity 0.15s",
+        cursor: editMode ? "grab" : "default",
+        userSelect: editMode ? "none" : undefined,
       }}
       {...(dragRowProps ?? {})}
     >
-      <div className="drag-handle" title="길게 눌러 순서 변경" {...(dragHandleProps ?? {})}>
-        <GripIcon />
-      </div>
+      {editMode && (
+        <div className="drag-handle" title="드래그하여 순서 변경">
+          <GripIcon />
+        </div>
+      )}
 
       <div className="t-info">
         <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{dsym}</a>
@@ -497,7 +510,7 @@ function TickerRow({ sym, quotes, athMap, onRemove, dragRowProps, dragHandleProp
       </div>
 
       <div className="t-actions">
-        {onRemove && (
+        {editMode && onRemove && (
           <button className="icon-btn-sm danger" onClick={() => onRemove(sym)} title="삭제"><XIcon /></button>
         )}
       </div>
@@ -516,7 +529,8 @@ function SectionCard({
 }) {
   const [showNote, setShowNote] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const { list, containerRef, activeIdx, overIdx, rowProps, handleProps } = useDragSort(tickers, onReorder);
+  const [editMode, setEditMode] = useState(false);
+  const { list, containerRef, activeIdx, overIdx, rowProps } = useDragSort(tickers, onReorder, editMode);
 
   async function handleRefreshAll() {
     if (!onRefreshAll || refreshing) return;
@@ -542,7 +556,7 @@ function SectionCard({
           )}
         </div>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          {onRefreshAll && tickers.length > 0 && (
+          {onRefreshAll && tickers.length > 0 && !editMode && (
             <button
               className="icon-btn-sm"
               onClick={handleRefreshAll}
@@ -552,7 +566,17 @@ function SectionCard({
               <RefreshIcon />
             </button>
           )}
-          {onAdd && (
+          {tickers.length > 0 && (
+            <button
+              className="icon-btn-sm"
+              onClick={() => setEditMode((v) => !v)}
+              title={editMode ? "편집 완료" : "순서·삭제 편집"}
+              style={{ color: editMode ? "var(--accent)" : undefined }}
+            >
+              <EditIcon />
+            </button>
+          )}
+          {!editMode && onAdd && (
             <button
               className="icon-btn"
               onClick={onAdd}
@@ -567,6 +591,11 @@ function SectionCard({
         </div>
       </div>
       {showNote && note && <p className="section-note">{note}</p>}
+      {editMode && (
+        <p className="hint" style={{ fontSize: 11, marginTop: 4, marginBottom: 0 }}>
+          행을 길게 눌러 순서 변경 · X로 삭제
+        </p>
+      )}
 
       {tickers.length === 0 && !adding && (
         <p className="muted" style={{ marginTop: 12, fontSize: 13 }}>
@@ -582,15 +611,15 @@ function SectionCard({
             quotes={quotes}
             athMap={athMap}
             onRemove={onRemove}
-            dragRowProps={onReorder ? rowProps(idx) : undefined}
-            dragHandleProps={onReorder ? handleProps(idx) : undefined}
-            isDragging={activeIdx === idx}
-            isDragOver={overIdx === idx && activeIdx !== idx}
+            editMode={editMode}
+            dragRowProps={editMode && onReorder ? rowProps(idx) : { "data-row-idx": String(idx) }}
+            isDragging={editMode && activeIdx === idx}
+            isDragOver={editMode && overIdx === idx && activeIdx !== idx}
           />
         ))}
       </div>
 
-      {adding && (
+      {!editMode && adding && (
         <div style={{ marginTop: 12 }}>
           <TickerSearch
             onSelect={onSelectAdd}
