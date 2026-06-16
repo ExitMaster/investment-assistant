@@ -254,6 +254,29 @@ input, select {
 }
 .expand-all-btn:hover { color: var(--text); }
 
+/* ── 매매 행동 가이드 ── */
+.mode-toggle {
+  display: flex; gap: 0; margin-bottom: 14px;
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+}
+.mode-toggle button {
+  flex: 1; padding: 9px 6px; font-size: 13px;
+  background: transparent; border: none; color: var(--text-dim); cursor: pointer;
+}
+.mode-toggle button.active { background: var(--accent); color: #fff; font-weight: 600; }
+.action-table { display: flex; flex-direction: column; gap: 6px; }
+.action-row { display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: center; }
+.action-level { font-family: var(--mono); font-weight: 700; font-size: 13px; }
+.action-prod { width: 100%; font-size: 13px; }
+.action-cash-wrap { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.action-cash { width: 52px; font-size: 13px; }
+.action-unify { display: flex; gap: 6px; margin-top: 4px; align-items: center; }
+.action-unify input { flex: 1; font-size: 13px; }
+.per-ticker-block { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+.per-ticker-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+.copy-row { margin-bottom: 8px; }
+.copy-row select { width: 100%; font-size: 13px; padding: 6px; }
+
 /* ── 상태 게이지 ── */
 .gauge-row { padding: 4px 4px 14px; border-top: 1px dashed var(--border); }
 .gauge { padding-top: 6px; }

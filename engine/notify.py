@@ -55,7 +55,23 @@ def send_message(chat_id, text, with_footer=True):
         return False
 
 
-def format_buy_level(ticker, level, price, ath, dd, name=None):
+def _buy_action_line(action):
+    """매수 행동 안내 라인. action: {'product':..., 'cash':...} 또는 None."""
+    if not action:
+        return ""
+    prod = (action.get("product") or "").strip()
+    cash = action.get("cash")
+    has_cash = cash not in (None, "")
+    if prod and has_cash:
+        return f"\n→ {prod} 매수 · 현금성 자산의 {cash}%"
+    if prod:
+        return f"\n→ {prod} 매수"
+    if has_cash:
+        return f"\n→ 현금성 자산의 {cash}% 매수"
+    return ""
+
+
+def format_buy_level(ticker, level, price, ath, dd, name=None, action=None):
     disp = _ticker_display(ticker, name)
     p = _fmt_price(price, ticker)
     a = _fmt_price(ath, ticker)
@@ -63,23 +79,42 @@ def format_buy_level(ticker, level, price, ath, dd, name=None):
         f"🔻 <b>{disp} 매수 신호</b>\n"
         f"ATH 대비 <b>-{level}%</b> 하락 도달\n"
         f"현재가 {p}  |  ATH {a} ({dd:+.1f}%)"
+        f"{_buy_action_line(action)}"
     )
 
 
-def format_sell(ticker, level, price, ath, gain, name=None):
+def format_prealert(ticker, level, price, ath, dd, gap, name=None, action=None):
+    """다음 매수레벨 임박 예고. gap: 레벨까지 남은 %p(양수)."""
     disp = _ticker_display(ticker, name)
     p = _fmt_price(price, ticker)
     a = _fmt_price(ath, ticker)
+    line = _buy_action_line(action)
+    prep = line.replace(" 매수", " 매수 준비") if line else ""
+    return (
+        f"⏳ <b>{disp} -{level}% 매수레벨 임박</b>\n"
+        f"현재 {dd:+.1f}% · 레벨까지 -{gap:.1f}%p 남음\n"
+        f"현재가 {p}  |  ATH {a}"
+        f"{prep}"
+    )
+
+
+def format_sell(ticker, level, price, ath, gain, name=None, cash_target=None):
+    disp = _ticker_display(ticker, name)
+    p = _fmt_price(price, ticker)
+    a = _fmt_price(ath, ticker)
+    tail = f"\n→ 레버리지 높은 종목부터 매도 · 현금비중 {cash_target}% 목표" if cash_target not in (None, "") else ""
     if level == 0:
         return (
             f"🔺 <b>{disp} 매도 신호</b>\n"
             f"ATH <b>도달</b>\n"
             f"현재가 {p}  |  ATH {a}"
+            f"{tail}"
         )
     return (
         f"🔺 <b>{disp} 매도 신호</b>\n"
         f"ATH 대비 <b>+{level}%</b> 초과 상승\n"
         f"현재가 {p}  |  ATH {a}"
+        f"{tail}"
     )
 
 

@@ -58,9 +58,10 @@ def get_settings(user_id):
 def get_index_tickers(user_id):
     """index_tickers 테이블에서 사용자의 ATH 감시 티커 목록 반환."""
     rows = _request("GET", "index_tickers", params={
-        "user_id": f"eq.{user_id}", "select": "ticker,name",
+        "user_id": f"eq.{user_id}", "select": "ticker,name,buy_actions",
     })
-    return [{"ticker": r["ticker"], "name": r.get("name")} for r in (rows or [])]
+    return [{"ticker": r["ticker"], "name": r.get("name"), "buy_actions": r.get("buy_actions")}
+            for r in (rows or [])]
 
 
 def get_indicator_tickers(user_id):

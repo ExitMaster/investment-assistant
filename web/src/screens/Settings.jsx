@@ -102,10 +102,100 @@ function ChipInput({ levels, onChange }) {
   );
 }
 
+/* ── 매매 행동 가이드 ── */
+function actSym(sym) { return (sym || "").replace(/\.(KS|KQ)$/, ""); }
+const DEFAULT_BUY_ACTIONS = {
+  10: { product: "IVV", cash: 20 },
+  20: { product: "QLD", cash: 40 },
+  30: { product: "TQQQ", cash: 70 },
+  40: { product: "TQQQ", cash: 100 },
+};
+function defAction(level) { return DEFAULT_BUY_ACTIONS[level] || { product: "", cash: "" }; }
+function getAction(actions, level) { return (actions || {})[level] || defAction(level); }
+
+function ActionTable({ levels, actions, onChange }) {
+  const [unify, setUnify] = useState("");
+  function setCell(level, key, val) {
+    onChange({ ...(actions || {}), [level]: { ...getAction(actions, level), [key]: val } });
+  }
+  function applyUnify() {
+    const p = unify.trim();
+    if (!p) return;
+    const next = { ...(actions || {}) };
+    levels.forEach((L) => { next[L] = { ...getAction(actions, L), product: p }; });
+    onChange(next);
+    setUnify("");
+  }
+  return (
+    <div className="action-table">
+      {levels.map((L) => {
+        const a = getAction(actions, L);
+        return (
+          <div className="action-row" key={L}>
+            <span className="action-level">-{L}%</span>
+            <input className="action-prod" value={a.product ?? ""} placeholder="종목"
+              onChange={(e) => setCell(L, "product", e.target.value)} />
+            <span className="action-cash-wrap">
+              현금
+              <input className="action-cash" type="number" min="0" max="100" value={a.cash ?? ""}
+                onChange={(e) => setCell(L, "cash", e.target.value === "" ? "" : parseFloat(e.target.value))} />
+              %
+            </span>
+          </div>
+        );
+      })}
+      <div className="action-unify">
+        <input value={unify} placeholder="종목 통일" onChange={(e) => setUnify(e.target.value)} />
+        <button className="btn-ghost" style={{ fontSize: 12, whiteSpace: "nowrap" }} onClick={applyUnify}>전 레벨 적용</button>
+      </div>
+    </div>
+  );
+}
+
+function PerTickerActions({ indexTickers, tickerActions, setTickerActions, levels }) {
+  const [open, setOpen] = useState({});
+  function copyFrom(target, source) {
+    setTickerActions((prev) => ({ ...prev, [target]: JSON.parse(JSON.stringify(prev[source] || {})) }));
+  }
+  return (
+    <>
+      {indexTickers.map((t) => (
+        <div key={t.ticker} className="per-ticker-block">
+          <div className="per-ticker-head" onClick={() => setOpen((o) => ({ ...o, [t.ticker]: !o[t.ticker] }))}>
+            <span>
+              <b>{actSym(t.ticker)}</b>
+              {t.name && <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>{t.name}</span>}
+            </span>
+            <span style={{ color: "var(--accent)" }}>{open[t.ticker] ? "▲" : "▼"}</span>
+          </div>
+          {open[t.ticker] && (
+            <div style={{ marginTop: 8 }}>
+              {indexTickers.length > 1 && (
+                <div className="copy-row">
+                  <select defaultValue="" onChange={(e) => { if (e.target.value) copyFrom(t.ticker, e.target.value); e.target.value = ""; }}>
+                    <option value="">다른 종목에서 복사…</option>
+                    {indexTickers.filter((o) => o.ticker !== t.ticker).map((o) => (
+                      <option key={o.ticker} value={o.ticker}>{actSym(o.ticker)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <ActionTable levels={levels} actions={tickerActions[t.ticker]}
+                onChange={(next) => setTickerActions((prev) => ({ ...prev, [t.ticker]: next }))} />
+            </div>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
 export default function Settings({ profile, flash, onTelegramLinked }) {
   const [s, setS] = useState(null);
   const [saving, setSaving] = useState(false);
   const [unlinking, setUnlinking] = useState(false);
+  const [indexTickers, setIndexTickers] = useState([]);
+  const [tickerActions, setTickerActions] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -123,6 +213,16 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
           .single());
       }
       setS(st);
+
+      const { data: ix } = await supabase
+        .from("index_tickers")
+        .select("ticker,name,buy_actions")
+        .eq("user_id", profile.id)
+        .order("sort_order");
+      setIndexTickers((ix ?? []).map((r) => ({ ticker: r.ticker, name: r.name })));
+      const map = {};
+      (ix ?? []).forEach((r) => { if (r.buy_actions) map[r.ticker] = r.buy_actions; });
+      setTickerActions(map);
     })();
   }, [profile.id]);
 
@@ -137,6 +237,15 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
       .from("settings")
       .update({ ...payload, updated_at: new Date().toISOString() })
       .eq("user_id", profile.id);
+    // 지표별 매매 행동 저장
+    await Promise.all(
+      Object.entries(tickerActions)
+        .filter(([, act]) => act && typeof act === "object")
+        .map(([tk, act]) =>
+          supabase.from("index_tickers").update({ buy_actions: act })
+            .eq("user_id", profile.id).eq("ticker", tk)
+        )
+    );
     setSaving(false);
     if (!error) {
       document.documentElement.setAttribute(
@@ -161,6 +270,7 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
 
   const times = Array.isArray(s.indicator_alert_times) ? s.indicator_alert_times : [];
   const levels = Array.isArray(s.drawdown_levels) ? s.drawdown_levels : [10, 20, 30];
+  const mode = s.action_mode === "per_ticker" ? "per_ticker" : "common";
   const lookbackSlider = lookbackToSlider(s.ath_lookback);
   const tgLink = TELEGRAM_BOT_USERNAME
     ? `https://t.me/${TELEGRAM_BOT_USERNAME}?start=${profile.id}`
@@ -330,6 +440,65 @@ export default function Settings({ profile, flash, onTelegramLinked }) {
           매도 알림: ATH 도달 시 + ATH 대비 매 10% 초과 상승 시.
           ATH 대비 하락율∙매도 알림 분류에 등록된 티커가 대상입니다.
         </div>
+      </div>
+
+      {/* ②-b 매매 행동 가이드 */}
+      <div className="card">
+        <h2>매매 행동 가이드</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          매수·매도 알림에 '무엇을 얼마나' 함께 표시합니다 (참고용 안내).
+        </p>
+
+        <div className="mode-toggle">
+          <button className={mode === "common" ? "active" : ""} onClick={() => up({ action_mode: "common" })}>
+            전지표 공통 모드
+          </button>
+          <button className={mode === "per_ticker" ? "active" : ""} onClick={() => up({ action_mode: "per_ticker" })}>
+            지표별 설정 모드
+          </button>
+        </div>
+
+        {mode === "common" ? (
+          <ActionTable levels={levels} actions={s.buy_actions} onChange={(next) => up({ buy_actions: next })} />
+        ) : indexTickers.length === 0 ? (
+          <p className="muted" style={{ fontSize: 13 }}>ATH 감시 지표가 없습니다. 대시보드에서 먼저 추가하세요.</p>
+        ) : (
+          <PerTickerActions
+            indexTickers={indexTickers}
+            tickerActions={tickerActions}
+            setTickerActions={setTickerActions}
+            levels={levels}
+          />
+        )}
+
+        <hr className="divider" />
+
+        <div className="field">
+          <label>매도 목표 현금비중 (%)</label>
+          <input type="number" min="0" max="100" value={s.sell_cash_target ?? 30}
+            onChange={(e) => up({ sell_cash_target: parseFloat(e.target.value) })} style={{ width: 80 }} />
+          <div className="hint">매도 신호 시 "레버리지 높은 종목부터 매도하여 현금비중 N%로" 안내.</div>
+        </div>
+
+        <div className="toggle-row">
+          <div>
+            <div className="toggle-label">임박 알림</div>
+            <div className="toggle-desc">다음 매수레벨에 근접하면 미리 1회 알림</div>
+          </div>
+          <label className="switch">
+            <input type="checkbox" checked={!!s.prealert_enabled}
+              onChange={(e) => up({ prealert_enabled: e.target.checked })} />
+            <span />
+          </label>
+        </div>
+        {s.prealert_enabled && (
+          <div className="field">
+            <label>임박 기준 (%p 이내)</label>
+            <input type="number" step="0.5" min="0.5" value={s.prealert_pp ?? 2.0}
+              onChange={(e) => up({ prealert_pp: parseFloat(e.target.value) })} style={{ width: 80 }} />
+            <div className="hint">현재 하락율이 다음 레벨까지 이 %p 이내로 근접하면 예고 알림.</div>
+          </div>
+        )}
       </div>
 
       {/* ③ 기술적 신호 알림 설정 */}

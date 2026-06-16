@@ -32,6 +32,27 @@ _KR_CLOSE = (15, 30)
 
 SELL_LEVELS = (0, 10, 20, 30)
 
+DEFAULT_BUY_ACTIONS = {
+    10: {"product": "IVV", "cash": 20},
+    20: {"product": "QLD", "cash": 40},
+    30: {"product": "TQQQ", "cash": 70},
+    40: {"product": "TQQQ", "cash": 100},
+}
+
+
+def resolve_action(level, st, ticker_actions):
+    """레벨별 매매 행동 조회. 우선순위: 지표별 모드의 티커 설정 → 공통 설정 → PDF 기본값."""
+    src = None
+    if st.get("action_mode") == "per_ticker" and ticker_actions:
+        src = ticker_actions
+    elif st.get("buy_actions"):
+        src = st.get("buy_actions")
+    if src:
+        a = src.get(str(level)) or src.get(level)
+        if a:
+            return a
+    return DEFAULT_BUY_ACTIONS.get(level)
+
 
 def _is_kr(ticker):
     return bool(_re.match(r'^\d{6}', ticker.split('.')[0]))
@@ -142,12 +163,16 @@ def run_intraday():
         repeat = int(st.get("redrawdown_repeat_interval", 30))
         buy_enabled = st.get("enable_buy_levels", True)
         sell_enabled = st.get("enable_sell_signals", True)
+        sell_cash_target = st.get("sell_cash_target", 30)
+        prealert_enabled = bool(st.get("prealert_enabled", False))
+        prealert_pp = float(st.get("prealert_pp", 2.0) or 2.0)
 
         tickers_set = {r["ticker"] for r in ticker_rows}
 
         for row in ticker_rows:
             ticker = row["ticker"]
             name = row.get("name")
+            ticker_actions = row.get("buy_actions")
             price = get_current_price(ticker)
             if price is None:
                 print(f"  {ticker}: no price"); continue
@@ -178,7 +203,8 @@ def run_intraday():
                 newly, cur_deep, dd = evaluate_buy_levels(
                     price, obj, levels, baseline_level, active_levels)
                 for L in newly:
-                    msg = notify.format_buy_level(ticker, L, price, obj.ath, -dd, name=name)
+                    action = resolve_action(L, st, ticker_actions)
+                    msg = notify.format_buy_level(ticker, L, price, obj.ath, -dd, name=name, action=action)
                     if notify.send_message(chat, msg):
                         db.insert_alert({
                             "user_id": uid, "ticker": ticker, "kind": "buy_level",
@@ -196,8 +222,9 @@ def run_intraday():
                                    datetime.fromisoformat(last)).total_seconds() / 60
                         send_repeat = elapsed >= repeat
                     if send_repeat and cur_deep not in newly:
+                        action = resolve_action(cur_deep, st, ticker_actions)
                         msg = notify.format_buy_level(
-                            ticker, cur_deep, price, obj.ath, -dd, name=name
+                            ticker, cur_deep, price, obj.ath, -dd, name=name, action=action
                         ) + f"\n(구간 유지 · {repeat}분 재알림)"
                         if notify.send_message(chat, msg):
                             db.insert_alert({
@@ -209,6 +236,27 @@ def run_intraday():
             else:
                 newly, cur_deep, dd = evaluate_buy_levels(
                     price, obj, levels, baseline_level, active_levels)
+
+            # 임박(선행) 알림: 다음 매수레벨에 prealert_pp 이내로 근접 시 1회
+            if prealert_enabled and buy_enabled:
+                dd_abs = dd  # 양수 하락 깊이
+                for L in sorted(levels):
+                    if L in active_levels:
+                        continue
+                    gap = L - dd_abs
+                    if 0 < gap <= prealert_pp:
+                        key = f"near_{L}"
+                        if key not in level_last_alert:
+                            action = resolve_action(L, st, ticker_actions)
+                            msg = notify.format_prealert(
+                                ticker, L, price, obj.ath, -dd_abs, gap, name=name, action=action)
+                            if notify.send_message(chat, msg):
+                                db.insert_alert({
+                                    "user_id": uid, "ticker": ticker, "kind": "prealert",
+                                    "level": f"-{L}%임박", "message": msg, "price": price, "ath": obj.ath,
+                                })
+                            level_last_alert[key] = now_iso()
+                        break
 
             if sell_enabled:
                 hit, gain = evaluate_sell_levels(price, obj, SELL_LEVELS)
@@ -232,7 +280,8 @@ def run_intraday():
                                 is_repeat_sell = True
 
                         if should_alert:
-                            msg = notify.format_sell(ticker, hit, price, obj.ath, gain, name=name)
+                            msg = notify.format_sell(ticker, hit, price, obj.ath, gain, name=name,
+                                                     cash_target=sell_cash_target)
                             if is_repeat_sell:
                                 msg += f"\n(구간 유지 · {repeat}분 재알림)"
                             if notify.send_message(chat, msg):
