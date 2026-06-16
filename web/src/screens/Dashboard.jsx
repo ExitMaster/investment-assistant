@@ -111,18 +111,20 @@ function TickerRow({ sym, quotes, athMap, onRemove, onEdit }) {
       </div>
 
       <div className="t-data">
-        <div className="t-changes">
-          {athChg != null && (
-            <span className={`badge mono ${athChg >= 0 ? "up" : "down"}`}>{fmtPct(athChg)}</span>
-          )}
-          {dayChg != null && (
-            <span className={`badge mono ${dayChg >= 0 ? "up" : "down"}`}>{fmtPct(dayChg)}</span>
-          )}
-        </div>
-        {(ath != null || prevClose != null) && (
-          <div className="t-refs">
-            {ath != null && <span className="t-ref mono">ATH {ath.toFixed(2)}</span>}
-            {prevClose != null && <span className="t-ref mono">전일 {prevClose.toFixed(2)}</span>}
+        {ath != null && (
+          <div className="t-ref-row">
+            <span className="t-ref mono">ATH {ath.toFixed(2)}</span>
+            {athChg != null && (
+              <span className={`badge mono ${athChg >= 0 ? "up" : "down"}`}>{fmtPct(athChg)}</span>
+            )}
+          </div>
+        )}
+        {prevClose != null && (
+          <div className="t-ref-row">
+            <span className="t-ref mono">전일 {prevClose.toFixed(2)}</span>
+            {dayChg != null && (
+              <span className={`badge mono ${dayChg >= 0 ? "up" : "down"}`}>{fmtPct(dayChg)}</span>
+            )}
           </div>
         )}
       </div>
