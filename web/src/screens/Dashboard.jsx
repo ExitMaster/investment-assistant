@@ -92,6 +92,17 @@ function TickerSearch({ onSelect, onCancel, placeholder, hint }) {
   );
 }
 
+/* ── 통화 포맷 ── */
+function isKR(sym) { return /^\d{6}/.test(sym.split(".")[0]); }
+function fmtPrice(v, sym, showCurrency = false) {
+  if (v == null) return null;
+  const kr = isKR(sym);
+  const formatted = kr
+    ? Math.round(v).toLocaleString("ko-KR")
+    : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return showCurrency ? `${kr ? "KRW" : "USD"} ${formatted}` : formatted;
+}
+
 /* ── 티커 한 행 ── */
 function TickerRow({ sym, quotes, athMap, onRemove, onEdit }) {
   const q = quotes[sym];
@@ -107,17 +118,19 @@ function TickerRow({ sym, quotes, athMap, onRemove, onEdit }) {
   return (
     <div className="ticker-row">
       <div className="t-info">
-        <div className="t-top-row">
-          <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{sym}</a>
-          {price != null && <span className="t-price mono">{price.toFixed(2)}</span>}
-        </div>
+        <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{sym}</a>
         {name && <div className="t-name">{name}</div>}
       </div>
 
       <div className="t-data">
+        {price != null && (
+          <div className="t-ref-row" style={{ marginBottom: 2 }}>
+            <span className="t-price mono">{fmtPrice(price, sym, true)}</span>
+          </div>
+        )}
         {ath != null && (
           <div className="t-ref-row">
-            <span className="t-ref mono">ATH {ath.toFixed(2)}</span>
+            <span className="t-ref mono">ATH {fmtPrice(ath, sym)}</span>
             {athChg != null && (
               <span className={`badge mono ${athChg >= 0 ? "up" : "down"}`}>{fmtPct(athChg)}</span>
             )}
@@ -125,7 +138,7 @@ function TickerRow({ sym, quotes, athMap, onRemove, onEdit }) {
         )}
         {prevClose != null && (
           <div className="t-ref-row">
-            <span className="t-ref mono">전일 {prevClose.toFixed(2)}</span>
+            <span className="t-ref mono">전일 {fmtPrice(prevClose, sym)}</span>
             {dayChg != null && (
               <span className={`badge mono ${dayChg >= 0 ? "up" : "down"}`}>{fmtPct(dayChg)}</span>
             )}
