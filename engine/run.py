@@ -9,6 +9,7 @@ GitHub Actions에서 주기 실행.
 사용자별 설정을 Supabase에서 읽어 각자 기준으로 판정/발송.
 """
 import sys
+import re as _re
 from datetime import datetime, timezone, timedelta
 
 import db
@@ -21,7 +22,42 @@ from data_source import (
     get_current_price, get_daily_closes_for_ath, get_daily_history,
 )
 
-ET = timezone(timedelta(hours=-4))  # 간이 ET (서머타임은 워크플로 스케줄에서 관리)
+ET  = timezone(timedelta(hours=-4))   # 간이 ET (서머타임은 워크플로 스케줄에서 관리)
+KST = timezone(timedelta(hours=9))
+
+# 시장별 개장/폐장 (로컬 시간 기준)
+_US_OPEN  = (9, 30)   # 09:30 ET
+_US_CLOSE = (16, 0)   # 16:00 ET
+_KR_OPEN  = (9, 0)    # 09:00 KST
+_KR_CLOSE = (15, 30)  # 15:30 KST
+
+
+def _is_kr(ticker):
+    return bool(_re.match(r'^\d{6}', ticker.split('.')[0]))
+
+
+def should_run_indicator(ticker, alert_times, now_utc, window_min=5):
+    """indicator_alert_times 중 하나와 현재 시각이 ±window_min분 이내면 True.
+    alert_times 미설정 시 항상 True."""
+    if not alert_times:
+        return True
+    kr = _is_kr(ticker)
+    tz = KST if kr else ET
+    open_hm  = _KR_OPEN  if kr else _US_OPEN
+    close_hm = _KR_CLOSE if kr else _US_CLOSE
+    now_local = now_utc.astimezone(tz)
+    for at in alert_times:
+        anchor = at.get("anchor", "open")
+        offset = int(at.get("offset_min", 0))
+        h, m = open_hm if anchor == "open" else close_hm
+        base = now_local.replace(hour=h, minute=m, second=0, microsecond=0)
+        if anchor == "open":
+            target = base + timedelta(minutes=offset)
+        else:
+            target = base - timedelta(minutes=offset)
+        if abs((now_utc - target.astimezone(timezone.utc)).total_seconds()) <= window_min * 60:
+            return True
+    return False
 
 
 def today_et():
@@ -164,6 +200,21 @@ def run_intraday():
             save_ath(uid, ticker, obj, baseline_level, active_levels, level_last_alert, day)
             print(f"  {ticker}: px={price:.2f} dd={dd:+.1f}% newly={newly}")
 
+        # --- 나머지 티커(indicator/watchlist) ATH 상태 갱신 (알림 없음) ---
+        extra = (set(db.get_indicator_tickers(uid)) | set(db.get_watchlist(uid))) - set(tickers)
+        for ticker in extra:
+            price = get_current_price(ticker)
+            if price is None:
+                continue
+            obj, saved = get_or_build_ath(uid, ticker, st.get("ath_lookback", "5y"), reset_pct)
+            if obj is None:
+                continue
+            bl  = saved.get("baseline_level", 0)  if saved else 0
+            al  = list(saved.get("active_levels", []))   if saved else []
+            lla = dict(saved.get("level_last_alert", {})) if saved else {}
+            ltd = saved.get("last_trade_day", day)        if saved else day
+            save_ath(uid, ticker, obj, bl, al, lla, ltd)
+
 
 # ============================================================
 # 모드 2: 보조지표 (indicators) — 일봉 확정 기준
@@ -187,12 +238,18 @@ def run_indicators():
         if not st:
             continue
 
+        alert_times = st.get("indicator_alert_times") or []
+        now_utc = datetime.now(timezone.utc)
+
         # 지수 보조지표
         if st.get("enable_buy_indicators", True):
             ind_tickers = db.get_indicator_tickers(uid)
             if not ind_tickers and st.get("indicator_ticker"):
                 ind_tickers = [st["indicator_ticker"]]
             for tkr in ind_tickers:
+                if not should_run_indicator(tkr, alert_times, now_utc):
+                    print(f"  [indicators] {tkr}: skip (시각 불일치)")
+                    continue
                 df = hist(tkr)
                 if df is not None and len(df) > 30:
                     sig = evaluate_indicators(df, st)
@@ -208,6 +265,8 @@ def run_indicators():
         # 개별주식 watchlist
         if st.get("enable_watchlist", True):
             for wt in db.get_watchlist(uid):
+                if not should_run_indicator(wt, alert_times, now_utc):
+                    continue
                 df = hist(wt)
                 if df is None or len(df) < 30:
                     continue

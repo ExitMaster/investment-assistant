@@ -100,47 +100,39 @@ function TickerRow({ sym, quotes, athMap, onRemove, onEdit }) {
   return (
     <div className="ticker-row">
       <div className="t-info">
-        <div>
-          <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">
-            {sym}
-          </a>
-        </div>
+        <a className="t-sym" href={tvLink(sym)} target="_blank" rel="noreferrer">{sym}</a>
         {name && <div className="t-name">{name}</div>}
-        <div className="t-sub">
-          {ath != null
-            ? `ATH ${ath.toFixed(2)}`
-            : prevClose != null
-            ? `전일 ${prevClose.toFixed(2)}`
-            : "ATH 미계산"}
-        </div>
+        {price != null && (
+          <div className="t-current">
+            <span className="t-current-label">현재가</span>
+            <span className="t-current-price mono">{price.toFixed(2)}</span>
+          </div>
+        )}
       </div>
 
       <div className="t-data">
-        <div className="t-price mono">{price != null ? price.toFixed(2) : "—"}</div>
         <div className="t-changes">
           {athChg != null && (
-            <span className={`badge mono ${athChg >= 0 ? "up" : "down"}`}>
-              {fmtPct(athChg)} ATH
-            </span>
+            <span className={`badge mono ${athChg >= 0 ? "up" : "down"}`}>{fmtPct(athChg)}</span>
           )}
           {dayChg != null && (
-            <span className={`badge mono ${dayChg >= 0 ? "up" : "down"}`}>
-              {fmtPct(dayChg)} 전일
-            </span>
+            <span className={`badge mono ${dayChg >= 0 ? "up" : "down"}`}>{fmtPct(dayChg)}</span>
           )}
         </div>
+        {(ath != null || prevClose != null) && (
+          <div className="t-refs">
+            {ath != null && <span className="t-ref mono">ATH {ath.toFixed(2)}</span>}
+            {prevClose != null && <span className="t-ref mono">전일 {prevClose.toFixed(2)}</span>}
+          </div>
+        )}
       </div>
 
       <div className="t-actions">
         {onEdit && (
-          <button className="icon-btn-sm" onClick={onEdit} title="수정">
-            <EditIcon />
-          </button>
+          <button className="icon-btn-sm" onClick={onEdit} title="수정"><EditIcon /></button>
         )}
         {onRemove && (
-          <button className="icon-btn-sm danger" onClick={() => onRemove(sym)} title="삭제">
-            <XIcon />
-          </button>
+          <button className="icon-btn-sm danger" onClick={() => onRemove(sym)} title="삭제"><XIcon /></button>
         )}
       </div>
     </div>
