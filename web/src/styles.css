@@ -157,6 +157,14 @@ input, select {
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   margin: 0 -16px;
+  margin-top: 0;
+}
+.marquee-panel-wrap {
+  margin: 0 -16px;
+  padding: 0 16px;
+  background: var(--bg);
+  position: relative;
+  z-index: 14;
 }
 .marquee-scroll {
   display: flex;

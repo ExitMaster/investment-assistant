@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { supabase } from "./supabase.js";
 import Login from "./screens/Login.jsx";
 import Pending from "./screens/Pending.jsx";
-import Dashboard from "./screens/Dashboard.jsx";
+import Dashboard, { MarqueeTape } from "./screens/Dashboard.jsx";
 import Alerts from "./screens/Alerts.jsx";
 import Settings from "./screens/Settings.jsx";
 import Admin from "./screens/Admin.jsx";
@@ -147,6 +147,8 @@ export default function App() {
           </button>
         </div>
       </div>
+
+      <MarqueeTape uid={profile.id} />
 
       <div className="screen-content">
         {screen === "dashboard" && (
