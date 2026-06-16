@@ -680,6 +680,10 @@ function SectionCard({
       return next;
     });
   }
+  const allExpanded = tickers.length > 0 && tickers.every((s) => expanded.has(s));
+  function toggleAll() {
+    setExpanded(allExpanded ? new Set() : new Set(tickers));
+  }
 
   async function handleRefreshAll() {
     if (!onRefreshAll || refreshing) return;
@@ -744,6 +748,15 @@ function SectionCard({
         <p className="hint" style={{ fontSize: 11, marginTop: 4, marginBottom: 0 }}>
           행을 길게 눌러 순서 변경 · X로 삭제
         </p>
+      )}
+
+      {withGauge && !editMode && tickers.length >= 2 && (
+        <div className="expand-all-row">
+          <button className="expand-all-btn" onClick={toggleAll}>
+            {allExpanded ? "전부 접기" : "전부 펼치기"}
+            <ChevronIcon open={allExpanded} />
+          </button>
+        </div>
       )}
 
       {tickers.length === 0 && !adding && (
