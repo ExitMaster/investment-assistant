@@ -114,13 +114,19 @@ export default function Backtest({ profile }) {
       if (disposed || !chartRef.current) return;
       if (chartObj.current) { chartObj.current.remove(); chartObj.current = null; }
 
+      // 테마(라이트/다크) 토큰을 읽어 차트 색을 맞춤
+      const cs = getComputedStyle(document.documentElement);
+      const tok = (name, fb) => (cs.getPropertyValue(name).trim() || fb);
+      const textCol = tok("--text-dim", "#9aa4b2");
+      const gridCol = tok("--border", "rgba(255,255,255,0.05)");
+
       const chart = lc.createChart(chartRef.current, {
         width: chartRef.current.clientWidth,
         height: 360,
-        layout: { background: { color: "transparent" }, textColor: "#9aa4b2" },
-        grid: { vertLines: { color: "rgba(255,255,255,0.05)" }, horzLines: { color: "rgba(255,255,255,0.05)" } },
-        rightPriceScale: { borderColor: "rgba(255,255,255,0.1)" },
-        timeScale: { borderColor: "rgba(255,255,255,0.1)" },
+        layout: { background: { color: "transparent" }, textColor: textCol, attributionLogo: false },
+        grid: { vertLines: { color: gridCol }, horzLines: { color: gridCol } },
+        rightPriceScale: { borderColor: gridCol },
+        timeScale: { borderColor: gridCol },
         crosshair: { mode: lc.CrosshairMode ? lc.CrosshairMode.Normal : 0 },
       });
       chartObj.current = chart;
