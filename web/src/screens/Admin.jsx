@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "../supabase.js";
 
-const STATUS_LABEL = { pending: "대기", active: "활성", blocked: "중지" };
+const STATUS_LABEL = { pending: "대기", active: "활성", blocked: "접근 차단" };
 
 function displaySym(sym) { return sym.replace(/\.(KS|KQ)$/, ""); }
 
@@ -148,11 +148,12 @@ export default function Admin({ flash }) {
             {/* 관리 버튼 */}
             <div className="row-inline" style={{ marginTop: 10 }}>
               {u.status !== "active" && <button className="btn-ghost" onClick={() => setStatus(u.id, "active")}>승인</button>}
-              {u.status === "active" && <button className="btn-danger" onClick={() => confirmBlock(u)}>접근 차단</button>}
-              {u.status === "blocked" && <button className="btn-ghost" onClick={() => setStatus(u.id, "pending")}>대기로</button>}
-              {u.role === "user"
-                ? <button className="btn-ghost" onClick={() => confirmRole(u, "admin")}>admin 부여</button>
-                : <button className="btn-ghost" onClick={() => confirmRole(u, "user")}>admin 해제</button>}
+              <div className="row-inline" style={{ marginLeft: "auto" }}>
+                {u.status === "active" && <button className="btn-danger" onClick={() => confirmBlock(u)}>접근 차단</button>}
+                {u.role === "user"
+                  ? <button className="btn-ghost" onClick={() => confirmRole(u, "admin")}>admin 부여</button>
+                  : <button className="btn-ghost" onClick={() => confirmRole(u, "user")}>admin 해제</button>}
+              </div>
             </div>
           </div>
         );
