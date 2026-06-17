@@ -318,7 +318,7 @@ input, select {
   transform: translateX(-50%);
   font-size: 9px; color: var(--text-faint); white-space: nowrap;
 }
-.gauge-pct-label.ath { color: var(--text-dim); font-weight: 700; }
+.gauge-pct-label.strong { color: var(--text); font-weight: 700; }
 /* 바 트랙 */
 .gauge-track {
   position: relative; height: 6px;

@@ -719,7 +719,7 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
         {g.marks.map((m) => (
           <span
             key={m}
-            className={`gauge-pct-label${m === 0 ? " ath" : ""}`}
+            className={`gauge-pct-label${m === 0 || m === g.nextMark ? " strong" : ""}`}
             style={{ left: `${g.posOf(m)}%` }}
           >
             {m === 0 ? "ATH" : m > 0 ? `+${m}%` : `${m}%`}
