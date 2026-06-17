@@ -714,21 +714,37 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
   const arrowChar = arrowUp ? "▲" : "▼";
   return (
     <div className="gauge">
-      {/* ① 바 위: 백분율 눈금 라벨 + ATH 가격 */}
+      {/* ① 퍼센트 라벨 (각 레벨에 % · 0은 ATH) */}
       <div className="gauge-above">
-        <div className="gauge-ath-tag" style={{ left: `${zeroLeft}%` }}>
-          <span className="gauge-ath-name">ATH</span>
-          <span className="gauge-ath-val">{fmtPrice(ath, sym)}</span>
-        </div>
-        {g.marks.filter((m) => m !== 0).map((m) => (
-          <span key={m} className="gauge-pct-label" style={{ left: `${g.posOf(m)}%` }}>
-            {m > 0 ? `+${m}` : m}
+        {g.marks.map((m) => (
+          <span
+            key={m}
+            className={`gauge-pct-label${m === 0 ? " ath" : ""}`}
+            style={{ left: `${g.posOf(m)}%` }}
+          >
+            {m === 0 ? "ATH" : m > 0 ? `+${m}%` : `${m}%`}
           </span>
         ))}
-        <span className="gauge-pct-unit">(%)</span>
       </div>
 
-      {/* ② 바 트랙 */}
+      {/* ② 레벨별 절대 가격 (ATH·다음 목표 레벨 강조) */}
+      <div className="gauge-levels">
+        {g.marks.map((m) => {
+          const levelPrice = ath * (1 + m / 100);
+          const strong = m === 0 || m === g.nextMark;
+          return (
+            <span
+              key={m}
+              className={`gauge-level-price${strong ? " next" : ""}`}
+              style={{ left: `${g.posOf(m)}%` }}
+            >
+              {fmtPrice(levelPrice, sym)}
+            </span>
+          );
+        })}
+      </div>
+
+      {/* ③ 바 트랙 */}
       <div className="gauge-track">
         <div className="gauge-fill" style={{
           left: `${Math.min(zeroLeft, markerLeft)}%`,
@@ -740,7 +756,7 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
         ))}
       </div>
 
-      {/* ③ 바 아래: 현재가 ▲/▼ 등락% */}
+      {/* ④ 바 아래: 현재가 ▲/▼ 등락% */}
       <div className="gauge-below">
         <div className="gauge-marker-group" style={{ left: `${markerLeft}%` }}>
           <span className="gauge-cur-price">{fmtPrice(price, sym)}</span>
@@ -749,22 +765,6 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
             <span className="gauge-day-chg" style={{ color: arrowColor }}>{fmtPct(dayChg)}</span>
           )}
         </div>
-      </div>
-
-      {/* ④ 레벨별 절대 가격 (ATH 제외, 다음 목표 레벨 강조) */}
-      <div className="gauge-levels">
-        {g.marks.filter((m) => m !== 0).map((m) => {
-          const levelPrice = ath * (1 + m / 100);
-          return (
-            <span
-              key={m}
-              className={`gauge-level-price${m === g.nextMark ? " next" : ""}`}
-              style={{ left: `${g.posOf(m)}%` }}
-            >
-              {fmtPrice(levelPrice, sym)}
-            </span>
-          );
-        })}
       </div>
 
       {/* ⑤ 캡션: 이전(발화 레벨·날짜) · 다음(레벨·남은 거리) */}
