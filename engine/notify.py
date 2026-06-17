@@ -100,6 +100,18 @@ def _chg_suffix(price, prev_close):
     return f"  {arrow}{abs(pct):.1f}% (전일)"
 
 
+def _market_block(ticker, price, ath=None, prev_close=None):
+    """티커 시세 컨텍스트(매수/매도 판단 보조): 현재가+전일대비, ATH 가격·ATH 대비 현재%.
+    price 없으면 빈 문자열. 매수/매도/임박/보조지표 등 티커별 알림에 공통으로 붙인다."""
+    if price is None:
+        return ""
+    lines = [f"현재가 {_fmt_price(price, ticker)}{_chg_suffix(price, prev_close)}"]
+    if ath:
+        pct = (price / ath - 1) * 100
+        lines.append(f"ATH {_fmt_price(ath, ticker)}  ·  현재 {pct:+.1f}%")
+    return "\n".join(lines)
+
+
 def send_message(chat_id, text, with_footer=True):
     """단일 사용자에게 메시지 발송. 성공 여부 반환."""
     if not BOT_TOKEN or not chat_id:
@@ -157,31 +169,29 @@ def format_buy_level(ticker, level, price, ath, dd, name=None, action=None,
     return "\n".join(lines) + _buy_action_line(action)
 
 
-def format_prealert(ticker, level, price, ath, dd, gap, name=None, action=None):
+def format_prealert(ticker, level, price, ath, dd, gap, name=None, action=None,
+                    prev_close=None):
     """다음 매수레벨 임박 예고. gap: 레벨까지 남은 %p(양수)."""
     disp = _ticker_link(ticker, name)
-    p = _fmt_price(price, ticker)
-    a = _fmt_price(ath, ticker)
     line = _buy_action_line(action)
     prep = line.replace(" 매수", " 매수 준비") if line else ""
     return (
         f"⏳ <b>{disp} -{level}% 매수레벨 임박</b>\n"
-        f"현재 {dd:+.1f}% · 레벨까지 -{gap:.1f}%p 남음\n"
-        f"현재가 {p}  |  ATH {a}"
+        f"레벨까지 -{gap:.1f}%p 남음\n"
+        f"{_market_block(ticker, price, ath, prev_close)}"
         f"{prep}"
     )
 
 
-def format_prealert_sell(ticker, level, price, ath, gain, gap, name=None):
+def format_prealert_sell(ticker, level, price, ath, gain, gap, name=None,
+                         prev_close=None):
     """다음 매도레벨 임박 예고. gap: 레벨까지 남은 %p(양수)."""
     disp = _ticker_link(ticker, name)
-    p = _fmt_price(price, ticker)
-    a = _fmt_price(ath, ticker)
     target = "ATH 도달" if level == 0 else f"+{level}%"
     return (
         f"⏳ <b>{disp} 매도레벨 임박</b>\n"
-        f"{target}까지 +{gap:.1f}%p 남음 (현재 {gain:+.1f}%)\n"
-        f"현재가 {p}  |  ATH {a}"
+        f"{target}까지 +{gap:.1f}%p 남음\n"
+        f"{_market_block(ticker, price, ath, prev_close)}"
     )
 
 
@@ -206,11 +216,18 @@ def format_sell(ticker, level, price, ath, gain, name=None, cash_target=None,
     return "\n".join(lines) + tail
 
 
-def format_indicator(ticker, signals, name=None):
+def _join_block(head_lines, ticker, price, ath, prev_close):
+    """본문 줄들 뒤에 시세 컨텍스트 블록을 덧붙인다(있을 때만)."""
+    block = _market_block(ticker, price, ath, prev_close)
+    return "\n".join(head_lines) + (f"\n{block}" if block else "")
+
+
+def format_indicator(ticker, signals, name=None, price=None, ath=None, prev_close=None):
     """매수 계열 보조지표 신호. 발생한 항목이 없으면 None."""
     disp = _ticker_link(ticker, name)
     v = signals.get("dmi_values", {})
-    lines = []
+    lines = [f"📊 <b>{disp} 예외적 매수 신호</b>"]
+    n0 = len(lines)
     if signals.get("dmi_buy"):
         lines.append(f"• DMI 매수신호 (DI-={v.get('minus_di')}, ADX={v.get('adx')})")
     if signals.get("dmi_imminent"):
@@ -221,30 +238,32 @@ def format_indicator(ticker, signals, name=None):
     if signals.get("low_vol_breakout"):
         r = signals.get("vol_ratio")
         lines.append(f"• 저점 대량거래 돌파{f' (거래량 x{r})' if r else ''}")
-    if not lines:
+    if len(lines) == n0:
         return None
-    return f"📊 <b>{disp} 예외적 매수 신호</b>\n" + "\n".join(lines)
+    return _join_block(lines, ticker, price, ath, prev_close)
 
 
-def format_sell_indicator(ticker, signals, name=None):
+def format_sell_indicator(ticker, signals, name=None, price=None, ath=None, prev_close=None):
     """매도 계열 보조지표 예외 신호. 발생한 항목이 없으면 None."""
     disp = _ticker_link(ticker, name)
-    lines = []
+    lines = [f"📉 <b>{disp} 예외적 매도 신호</b>"]
+    n0 = len(lines)
     if signals.get("bear_div"):
         bv = signals.get("bear_div_values") or {}
         lines.append(f"• 하락 다이버전스 (%K {bv.get('k1')}→{bv.get('k2')} 하향)")
     if signals.get("high_vol_breakout"):
         r = signals.get("vol_ratio")
         lines.append(f"• 고점 대량거래 이탈{f' (거래량 x{r})' if r else ''}")
-    if not lines:
+    if len(lines) == n0:
         return None
-    return f"📉 <b>{disp} 예외적 매도 신호</b>\n" + "\n".join(lines)
+    return _join_block(lines, ticker, price, ath, prev_close)
 
 
-def format_watchlist(ticker, signals, name=None):
+def format_watchlist(ticker, signals, name=None, price=None, ath=None, prev_close=None):
     disp = _ticker_link(ticker, name)
     v = signals["dmi_values"]
-    return (
-        f"⭐ <b>{disp} 개별주식 DMI 매수 신호</b>\n"
-        f"DI-={v['minus_di']}, ADX={v['adx']}"
-    )
+    lines = [
+        f"⭐ <b>{disp} 개별주식 DMI 매수 신호</b>",
+        f"DI-={v['minus_di']}, ADX={v['adx']}",
+    ]
+    return _join_block(lines, ticker, price, ath, prev_close)

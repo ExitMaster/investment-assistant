@@ -32,7 +32,7 @@ def _samples():
 
     out.append(("매수레벨 임박", notify.format_prealert(
         "QQQ", 20, 380.10, 458.17, -17.0, 3.0, name=None,
-        action={"product": "QQQ", "cash": 20})))
+        action={"product": "QQQ", "cash": 20}, prev_close=384.20)))
 
     out.append(("매도 신호 (ATH 도달, 기본 색상)", notify.format_sell(
         "QQQ", 0, 458.20, 458.17, 0.0, name=None, cash_target=50,
@@ -43,7 +43,7 @@ def _samples():
         prev_close=499.30, next_level=20, next_gap=10.0)))
 
     out.append(("매도레벨 임박", notify.format_prealert_sell(
-        "QQQ", 10, 498.00, 458.17, 8.7, 1.3, name=None)))
+        "QQQ", 10, 498.00, 458.17, 8.7, 1.3, name=None, prev_close=493.50)))
 
     # 보조지표: 실제로 발생한 신호만 bullet으로 표기됨(아래는 일부만 True인 현실적 예시)
     out.append(("보조지표 매수", notify.format_indicator("005930.KS", {
@@ -51,16 +51,16 @@ def _samples():
         "bull_div": True,
         "dmi_values": {"minus_di": 28.3, "adx": 22.1},
         "bull_div_values": {"k1": 12, "k2": 25},
-    }, name="삼성전자")))
+    }, name="삼성전자", price=72100, ath=88000, prev_close=73500)))
 
     out.append(("보조지표 매도", notify.format_sell_indicator("QQQ", {
         "high_vol_breakout": True,
         "vol_ratio": 3.1,
-    }, name=None)))
+    }, name=None, price=505.30, ath=458.17, prev_close=500.10)))
 
     out.append(("개별주식 DMI", notify.format_watchlist("AAPL", {
         "dmi_values": {"minus_di": 30.5, "adx": 25.0},
-    }, name=None)))
+    }, name=None, price=189.40, ath=237.20, prev_close=192.10)))
 
     # ── 관리자 알림 유형 ──────────────────────────────────────────
     out.append(("관리자: 신규 가입 요청", notify.format_admin_new_user(

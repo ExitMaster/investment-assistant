@@ -62,6 +62,25 @@ def _is_kr(ticker):
     return bool(_re.match(r'^\d{6}', ticker.split('.')[0]))
 
 
+def _indicator_ctx(uid, ticker, df):
+    """보조지표/개별DMI 알림용 시세 컨텍스트: (ath, prev_close).
+    ath는 ath_state(인트라데이가 갱신해 둔 값)에서, prev_close는 일봉 직전 종가에서."""
+    ath = None
+    try:
+        saved = db.get_ath_state(uid, ticker)
+        if saved and saved.get("ath"):
+            ath = float(saved["ath"])
+    except Exception:
+        ath = None
+    prev_close = None
+    try:
+        if df is not None and len(df) >= 2:
+            prev_close = float(df["Close"].iloc[-2])
+    except Exception:
+        prev_close = None
+    return ath, prev_close
+
+
 def is_muted(st):
     """알림 차단 상태 판정: 마스터 차단(alerts_master_off) 또는 일시중지(muted_until)."""
     if st.get("alerts_master_off"):
@@ -299,7 +318,8 @@ def run_intraday():
                         if key not in level_last_alert:
                             action = resolve_action(L, st, ticker_actions)
                             msg = notify.format_prealert(
-                                ticker, L, price, obj.ath, -dd_abs, gap, name=name, action=action)
+                                ticker, L, price, obj.ath, -dd_abs, gap, name=name,
+                                action=action, prev_close=prev_close)
                             db.insert_alert({
                                 "user_id": uid, "ticker": ticker, "kind": "prealert",
                                 "level": f"-{L}%임박", "message": msg, "price": price, "ath": obj.ath,
@@ -319,7 +339,8 @@ def run_intraday():
                         key = f"near_sell_{L}"
                         if key not in level_last_alert:
                             msg = notify.format_prealert_sell(
-                                ticker, L, price, obj.ath, gain_now, gap, name=name)
+                                ticker, L, price, obj.ath, gain_now, gap, name=name,
+                                prev_close=prev_close)
                             db.insert_alert({
                                 "user_id": uid, "ticker": ticker, "kind": "prealert",
                                 "level": (f"+{L}%임박" if L > 0 else "ATH도달임박"),
@@ -436,6 +457,7 @@ def run_indicators():
                     continue
                 sig = evaluate_indicators(df, st)
                 px = float(df["Close"].iloc[-1])
+                ath_v, prev_close = _indicator_ctx(uid, tkr, df)
 
                 # 토글로 끈 신호는 제외
                 if not div_on:
@@ -444,22 +466,24 @@ def run_indicators():
                     sig["low_vol_breakout"] = sig["high_vol_breakout"] = False
 
                 # 매수 계열
-                msg = notify.format_indicator(tkr, sig, name=tname)
+                msg = notify.format_indicator(tkr, sig, name=tname,
+                                              price=px, ath=ath_v, prev_close=prev_close)
                 if msg:
                     db.insert_alert({
                         "user_id": uid, "ticker": tkr, "kind": "buy_indicator",
-                        "level": "보조지표", "message": msg, "price": px, "ath": None,
+                        "level": "보조지표", "message": msg, "price": px, "ath": ath_v,
                     })
                     if send_tg:
                         notify.send_message(chat, msg)
 
                 # 매도 계열 예외 (하락 다이버전스 / 고점 대량거래)
                 if sell_on:
-                    smsg = notify.format_sell_indicator(tkr, sig, name=tname)
+                    smsg = notify.format_sell_indicator(tkr, sig, name=tname,
+                                                        price=px, ath=ath_v, prev_close=prev_close)
                     if smsg:
                         db.insert_alert({
                             "user_id": uid, "ticker": tkr, "kind": "sell_indicator",
-                            "level": "보조지표", "message": smsg, "price": px, "ath": None,
+                            "level": "보조지표", "message": smsg, "price": px, "ath": ath_v,
                         })
                         if send_tg:
                             notify.send_message(chat, smsg)
@@ -475,11 +499,14 @@ def run_indicators():
                     continue
                 sig = evaluate_indicators(df, st)
                 if sig["dmi_buy"]:
-                    msg = notify.format_watchlist(wt, sig, name=wname)
+                    px = float(df["Close"].iloc[-1])
+                    ath_v, prev_close = _indicator_ctx(uid, wt, df)
+                    msg = notify.format_watchlist(wt, sig, name=wname,
+                                                  price=px, ath=ath_v, prev_close=prev_close)
                     db.insert_alert({
                         "user_id": uid, "ticker": wt, "kind": "watchlist",
                         "level": "DMI", "message": msg,
-                        "price": float(df["Close"].iloc[-1]), "ath": None,
+                        "price": px, "ath": ath_v,
                     })
                     if send_tg:
                         notify.send_message(chat, msg)
