@@ -48,6 +48,61 @@ def get_active_users():
     return rows or []
 
 
+def get_profile(user_id):
+    rows = _request("GET", "profiles", params={
+        "id": f"eq.{user_id}",
+        "select": "id,email,display_name,role,telegram_chat_id",
+    })
+    return rows[0] if rows else None
+
+
+def get_admin_chat_ids(exclude=None):
+    """알림 받을 관리자(role=admin · 텔레그램 연결됨)의 chat_id 목록.
+    exclude: 제외할 chat_id(자기 자신에게 보내지 않기 위해)."""
+    rows = _request("GET", "profiles", params={
+        "select": "telegram_chat_id",
+        "role": "eq.admin",
+        "telegram_linked": "is.true",
+    })
+    ids = [str(r["telegram_chat_id"]) for r in (rows or []) if r.get("telegram_chat_id")]
+    if exclude is not None:
+        ids = [c for c in ids if c != str(exclude)]
+    return ids
+
+
+def get_pending_unnotified():
+    """관리자에게 아직 통지하지 않은 신규 가입 요청."""
+    rows = _request("GET", "profiles", params={
+        "select": "id,email,display_name",
+        "status": "eq.pending",
+        "admin_notified": "is.false",
+    })
+    return rows or []
+
+
+def mark_admin_notified(user_id):
+    return _request("PATCH", "profiles",
+                    params={"id": f"eq.{user_id}"},
+                    body={"admin_notified": True},
+                    prefer="return=minimal")
+
+
+def get_pending_unlink_notify():
+    """텔레그램 해지 알림 대기 중인 사용자 (웹앱이 해지 시 플래그 설정)."""
+    rows = _request("GET", "profiles", params={
+        "select": "id,email,display_name",
+        "admin_unlink_notify": "is.true",
+    })
+    return rows or []
+
+
+def clear_unlink_notify(user_id):
+    return _request("PATCH", "profiles",
+                    params={"id": f"eq.{user_id}"},
+                    body={"admin_unlink_notify": False},
+                    prefer="return=minimal")
+
+
 def get_settings(user_id):
     rows = _request("GET", "settings", params={
         "user_id": f"eq.{user_id}", "select": "*",

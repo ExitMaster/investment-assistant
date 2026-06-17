@@ -204,6 +204,7 @@ function TelegramSection({ profile, onTelegramLinked }) {
       telegram_chat_id: null,
       telegram_linked: false,
       telegram_display_name: null,
+      admin_unlink_notify: true,
     }).eq("id", profile.id);
     setUnlinking(false);
     if (onTelegramLinked) onTelegramLinked();

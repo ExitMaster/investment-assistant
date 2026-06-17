@@ -14,8 +14,36 @@ import urllib.request
 import urllib.parse
 
 import db
+import notify
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+
+def _send_admins(text, exclude=None):
+    """모든 관리자(텔레그램 연결됨)에게 발송. 한 명이라도 성공하면 True."""
+    chat_ids = db.get_admin_chat_ids(exclude=exclude)
+    ok = False
+    for cid in chat_ids:
+        if notify.send_message(cid, text, with_footer=False):
+            ok = True
+    return ok
+
+
+def notify_admin_events():
+    """신규 가입 요청·텔레그램 해지를 관리자에게 통지(폴링 기반)."""
+    # 신규 가입 요청
+    for u in db.get_pending_unnotified():
+        text = notify.format_admin_new_user(u.get("display_name"), u.get("email"))
+        if _send_admins(text):
+            db.mark_admin_notified(u["id"])
+            print(f"[admin] notified new user {u.get('email')}")
+    # 텔레그램 연결 해지 (웹앱이 플래그 설정)
+    for u in db.get_pending_unlink_notify():
+        text = notify.format_admin_tg_unlinked(u.get("display_name"), u.get("email"))
+        # 해지 알림은 한 번 통지하면 관리자 부재 여부와 무관하게 플래그를 내린다
+        _send_admins(text)
+        db.clear_unlink_notify(u["id"])
+        print(f"[admin] notified unlink {u.get('email')}")
 
 
 def tg_api(method, params=None):
@@ -33,6 +61,9 @@ def tg_api(method, params=None):
 def main():
     if not BOT_TOKEN:
         print("no bot token"); return
+
+    # 신규 가입·해지 등 관리자 통지 먼저 처리
+    notify_admin_events()
 
     res = tg_api("getUpdates", {"timeout": 0})
     if not res or not res.get("ok"):
@@ -74,6 +105,12 @@ def main():
                         "text": "✅ 연결되었습니다. 이제 매수/매도 신호 알림을 이 채팅으로 받습니다.",
                     })
                     print(f"[tg] linked user={user_id} chat={chat_id} name={display_name}")
+                    # 관리자에게 연결 사실 통지(방금 연결한 본인 제외)
+                    prof = db.get_profile(user_id)
+                    if prof:
+                        text = notify.format_admin_tg_linked(
+                            prof.get("display_name"), prof.get("email"), display_name)
+                        _send_admins(text, exclude=chat_id)
                 else:
                     tg_api("sendMessage", {
                         "chat_id": chat_id,

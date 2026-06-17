@@ -12,11 +12,11 @@ export default function Login() {
     <div className="center-screen">
       <div>
         <div className="brand" style={{ fontSize: 26, marginBottom: 6 }}>
-          Investment<span className="dot">·</span>Assistant
+          Investment Assistant
         </div>
         <p className="muted" style={{ maxWidth: 340 }}>
-          지수가 고점 대비 설정한 폭만큼 하락하면 텔레그램으로 매수 신호를 보냅니다.
-          접속하지 않아도 알림이 도착합니다.
+          웹에 접속해 있지 않더라도 “무한주식투자시스템”에 따른 매수∙매도 신호를
+          텔레그램 알림으로 보냅니다.
         </p>
       </div>
       <button className="btn-primary" onClick={signIn} style={{ minWidth: 220 }}>

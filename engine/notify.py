@@ -14,6 +14,43 @@ APP_URL = os.environ.get("APP_URL", "https://investment-assistant-navy.vercel.ap
 _FOOTER = f'\n\n<a href="{APP_URL}/?screen=alerts">Investment Assistant</a>'
 
 
+def _admin_footer():
+    return f'\n\n<a href="{APP_URL}/?screen=admin">관리자 페이지 열기</a>'
+
+
+def format_admin_new_user(name, email):
+    """신규 가입 요청 알림 (관리자용). Gmail 검색·관리자 페이지 링크 포함."""
+    name_disp = name or "(이름 없음)"
+    line = f"🆕 <b>신규 가입 요청</b>\n이름: {name_disp}"
+    if email:
+        gmail = "https://mail.google.com/mail/u/0/#search/" + urllib.parse.quote(email)
+        line += f"\n이메일: {email}\n\n<a href=\"{gmail}\">📬 Gmail에서 이 사용자 찾기</a>"
+    return line + _admin_footer()
+
+
+def format_admin_tg_linked(name, email, tg_name):
+    """텔레그램 연결됨 알림 (관리자용)."""
+    name_disp = name or "(이름 없음)"
+    who = f"{name_disp} ({email})" if email else name_disp
+    return (
+        f"📲 <b>텔레그램 연결됨</b>\n"
+        f"{who}\n"
+        f"→ {tg_name}"
+        f"{_admin_footer()}"
+    )
+
+
+def format_admin_tg_unlinked(name, email):
+    """텔레그램 연결 해지 알림 (관리자용)."""
+    name_disp = name or "(이름 없음)"
+    who = f"{name_disp} ({email})" if email else name_disp
+    return (
+        f"🔕 <b>텔레그램 연결 해지</b>\n"
+        f"{who}"
+        f"{_admin_footer()}"
+    )
+
+
 def _is_kr(ticker):
     return bool(re.match(r'^\d{6}', ticker.split('.')[0]))
 
