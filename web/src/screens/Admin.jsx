@@ -54,6 +54,13 @@ export default function Admin({ flash }) {
     setUsers((us) => us.map((u) => (u.id === id ? { ...u, role } : u)));
     flash(`권한: ${role}`);
   }
+  function confirmRole(u, role) {
+    const who = u.display_name || u.email;
+    const msg = role === "admin"
+      ? `${who} 님에게 admin 권한을 부여할까요?`
+      : `${who} 님의 admin 권한을 해제할까요?`;
+    if (window.confirm(msg)) setRole(u.id, role);
+  }
 
   if (loading) return <div className="card"><p className="muted">사용자 불러오는 중…</p></div>;
 
@@ -137,8 +144,8 @@ export default function Admin({ flash }) {
               {u.status === "active" && <button className="btn-danger" onClick={() => setStatus(u.id, "blocked")}>중지</button>}
               {u.status === "blocked" && <button className="btn-ghost" onClick={() => setStatus(u.id, "pending")}>대기로</button>}
               {u.role === "user"
-                ? <button className="btn-ghost" onClick={() => setRole(u.id, "admin")}>admin 부여</button>
-                : <button className="btn-ghost" onClick={() => setRole(u.id, "user")}>admin 해제</button>}
+                ? <button className="btn-ghost" onClick={() => confirmRole(u, "admin")}>admin 부여</button>
+                : <button className="btn-ghost" onClick={() => confirmRole(u, "user")}>admin 해제</button>}
             </div>
           </div>
         );
