@@ -182,6 +182,11 @@ export default function Settings({ profile, flash, isAdmin, onAdmin }) {
   const [indexTickers, setIndexTickers] = useState([]);
   const [tickerActions, setTickerActions] = useState({});
   const saveTimer = useRef(null);
+  // ATH 재계산 트리거: 갱신 임계/산정 기간이 바뀐 뒤 '타이핑이 끝났을 때'(idle 또는
+  // 설정창 이탈)에만 ath_state를 다시 계산한다. 매 입력마다 외부 호출하지 않도록 디바운스.
+  const athRecalcTimer = useRef(null);
+  const athPending = useRef(null);      // {resetPct, lookback} | null
+  const indexTickersRef = useRef([]);
 
   useEffect(() => {
     (async () => {
@@ -212,6 +217,17 @@ export default function Settings({ profile, flash, isAdmin, onAdmin }) {
     })();
   }, [profile.id]);
 
+  indexTickersRef.current = indexTickers;
+
+  // 설정창을 벗어날 때(언마운트) 아직 안 돌린 ATH 재계산이 남아 있으면 즉시 실행.
+  useEffect(() => {
+    return () => {
+      clearTimeout(athRecalcTimer.current);
+      if (athPending.current) runAthRecalc();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (!s) return <div className="card"><p className="muted">설정 불러오는 중…</p></div>;
 
   // 완전 자동저장: 변경 즉시 디바운스로 DB 반영 (저장 버튼 없음)
@@ -227,10 +243,48 @@ export default function Settings({ profile, flash, isAdmin, onAdmin }) {
         .eq("user_id", profile.id);
     }, 500);
   }
+  // 사용자의 ATH 감시 티커(index_tickers)를 새 설정으로 다시 계산해 ath_state에 즉시 반영.
+  // (init-ath는 티커 추가 때와 동일한 경로. 레벨 상태도 새 ATH 기준으로 재-baseline 된다.)
+  // refs만 읽으므로 언마운트 클로저에서 호출해도 최신 값이 쓰인다.
+  async function runAthRecalc() {
+    const pend = athPending.current;
+    if (!pend) return;
+    athPending.current = null;
+    clearTimeout(athRecalcTimer.current);
+    const tickers = indexTickersRef.current.map((t) => t.ticker);
+    if (!tickers.length) return;
+    const { data: sess } = await supabase.auth.getSession();
+    const token = sess?.session?.access_token;
+    if (!token) return;
+    for (const ticker of tickers) {
+      try {
+        await fetch("/api/init-ath", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            ticker,
+            resetPct: pend.resetPct ?? 10,
+            lookback: pend.lookback ?? "5y",
+          }),
+        });
+      } catch { /* 네트워크 실패해도 다음 엔진 cron이 재계산하므로 무시 */ }
+    }
+  }
+
+  function scheduleAthRecalc(resetPct, lookback) {
+    athPending.current = { resetPct, lookback };
+    clearTimeout(athRecalcTimer.current);
+    athRecalcTimer.current = setTimeout(runAthRecalc, 4000);  // 타이핑 멈춘 뒤에만
+  }
+
   function up(patch) {
     const next = { ...s, ...patch };
     setS(next);
     persistSettings(next);
+    // ATH 기준을 바꾸는 두 설정에 한해서만 재계산 예약(다른 설정은 영향 없음)
+    if ("ath_reset_pct" in patch || "ath_lookback" in patch) {
+      scheduleAthRecalc(next.ath_reset_pct ?? 10, next.ath_lookback ?? "5y");
+    }
   }
 
   // 지표별 매매 행동도 변경 즉시 저장

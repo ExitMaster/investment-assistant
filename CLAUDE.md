@@ -63,7 +63,7 @@ README.md
   - `watchlist` — ③ 개별주식 DMI 감시 티커
   - `marquee_tickers` — 상단 전광판 표시 항목 (symbol·enabled·sort_order)
   - `ath_state` — 티커별 ATH ratchet 상태 (ath·running_high·exceeded_threshold·baseline_level·
-    active_levels·level_last_alert·last_trade_day)
+    active_levels·level_last_alert·last_trade_day·reset_pct_used·lookback_used)
   - `alerts` — 발송 이력
 - **Vercel**: web/ 배포. Root Directory = `web`. 주소 `https://investment-assistant-navy.vercel.app`.
   GitHub push 시 자동 재배포.
@@ -79,6 +79,9 @@ README.md
 스키마 변경은 커넥터로 자동 반영 안 됨 → **Supabase SQL Editor에서 직접 실행**.
 - `migration_alerts_settings.sql`: `settings.alerts_master_off`(알림 전체차단),
   `settings.include_action_guide`(매매 행동 가이드 알림 포함) 컬럼 추가. (실행 완료됨)
+- `migration_ath_params.sql`: `ath_state.reset_pct_used`·`lookback_used` 컬럼 추가.
+  ATH가 어떤 설정값으로 계산됐는지 기록 → 사용자가 갱신 임계/산정 기간을 바꾸면 엔진이
+  감지해 재계산. **⚠️ Supabase SQL Editor에서 실행 필요(미실행 시 재계산 트리거 동작 안 함).**
 - 신규 컬럼을 코드에서 쓰기 전에 반드시 DB에 컬럼이 있는지 확인하고, 없으면 ALTER 문을
   `migration_*.sql`로 만들어 사용자에게 실행을 요청할 것.
 
@@ -102,6 +105,14 @@ README.md
 - **계산 일관성**: init-ath.js(티커 추가)·build_ath_from_history(엔진 부트스트랩)·매 거래일 첫
   intraday 실행이 모두 동일한 확정-고점 정의로 ATH를 히스토리에서 재계산. ATH는 확정 일봉 종가
   기준으로만 전진하며 장중 실시간가로는 움직이지 않음.
+- **설정 변경 시 ATH 재계산(갱신 임계·산정 기간)**: `ath_state`에 계산 당시 파라미터를
+  `reset_pct_used`·`lookback_used`로 기록한다. ⓐ 엔진(`get_or_build_ath`)이 매 실행마다 현재
+  설정과 비교해 다르면 히스토리로 재계산(saved=None 취급 → `final_regime_extremes`로 재-baseline,
+  지나간 레벨 억제·알림 폭주 방지). 재계산 실패(네트워크) 시엔 스탬프하지 않고 다음 주기 재시도.
+  ⓑ 웹 Settings는 두 값이 바뀌면 4초 idle 또는 설정창 이탈(언마운트) 시 `index_tickers` 각각에
+  `/api/init-ath`를 호출해 `ath_state`를 즉시 갱신(대시보드 게이지 stale 방지). 매 입력마다가
+  아니라 '타이핑 끝난 뒤'에만 호출. 백테스트는 브라우저에서 현재 설정으로 매번 재계산하므로 이미
+  일관됨. **엔진(ⓐ)이 source of truth라 웹(ⓑ)이 실패해도 5분 내 자가 치유.**
 - **레벨 1회 발화(ATH 구간 기준)** — *이 프로젝트에서 가장 자주 논의된 규칙*:
   한 매수/매도 레벨은 **같은 ATH 구간에서 1회만** 알림한다.
   - 상태(`active_levels`·`level_last_alert`)는 **매 거래일이 아니라 ATH가 위로 갱신될 때만**

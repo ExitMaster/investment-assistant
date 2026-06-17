@@ -94,6 +94,9 @@ export default async function handler(req, res) {
       active_levels: [],
       level_last_alert: {},
       last_trade_day: null,
+      // 어떤 설정값으로 계산했는지 기록 → 엔진이 헛-재계산하지 않도록(설정 변경 감지용)
+      reset_pct_used: Number(resetPct),
+      lookback_used: lookback,
       updated_at: new Date().toISOString(),
     }),
   });

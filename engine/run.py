@@ -129,25 +129,45 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-# ----- ATH 상태: DB 우선, 없으면 히스토리로 구축 -----
+def _ath_params_changed(saved, lookback, reset_pct):
+    """저장된 ath_state가 현재 설정(갱신 임계·산정 기간)과 다른 파라미터로 계산됐는지.
+    reset_pct_used/lookback_used 컬럼이 없던 과거 행은 현재값으로 간주(미변경)."""
+    try:
+        used_reset = float(saved.get("reset_pct_used", reset_pct))
+    except (TypeError, ValueError):
+        used_reset = reset_pct
+    used_lb = saved.get("lookback_used") or lookback
+    return (abs(used_reset - float(reset_pct)) > 1e-9) or (str(used_lb) != str(lookback))
+
+
+def _ath_from_saved(saved, reset_pct):
+    from indicators import AthRatchet
+    obj = AthRatchet(saved["ath"], reset_pct=reset_pct)
+    obj.running_high = saved["running_high"]
+    obj.exceeded_threshold = saved["exceeded_threshold"]
+    return obj
+
+
+# ----- ATH 상태: DB 우선, 없으면(또는 설정 변경 시) 히스토리로 재구축 -----
 def get_or_build_ath(user_id, ticker, lookback, reset_pct):
     saved = db.get_ath_state(user_id, ticker)
-    if saved:
-        from indicators import AthRatchet
-        obj = AthRatchet(saved["ath"], reset_pct=reset_pct)
-        obj.running_high = saved["running_high"]
-        obj.exceeded_threshold = saved["exceeded_threshold"]
-        return obj, saved
+    if saved and not _ath_params_changed(saved, lookback, reset_pct):
+        return _ath_from_saved(saved, reset_pct), saved
+    # saved가 없거나, 갱신 임계/산정 기간이 바뀐 경우 → 히스토리로 재계산.
+    # 재계산 성공 시 saved=None을 반환해 호출부가 레벨 상태를 재-baseline 하게 한다
+    # (이미 지나간 매수/매도 레벨은 억제 → 설정 변경만으로 알림 폭주하지 않음).
     closes = get_daily_closes_for_ath(ticker, lookback)
     if closes is None:
+        # 네트워크 실패 등으로 재계산 불가 → 이번 주기는 건너뛰고 다음 주기에 재시도.
+        # (저장값을 그대로 쓰면서 새 파라미터로 스탬프해 버리면 재계산이 영영 안 되므로 skip.)
         return None, None
     obj = build_ath_from_history(closes, reset_pct=reset_pct)
     return obj, None
 
 
 def save_ath(user_id, ticker, obj, baseline_level, active_levels,
-             level_last_alert, last_trade_day):
-    db.upsert_ath_state({
+             level_last_alert, last_trade_day, reset_pct_used=None, lookback_used=None):
+    state = {
         "user_id": user_id, "ticker": ticker,
         "ath": obj.ath, "running_high": obj.running_high,
         "exceeded_threshold": obj.exceeded_threshold,
@@ -156,7 +176,13 @@ def save_ath(user_id, ticker, obj, baseline_level, active_levels,
         "level_last_alert": level_last_alert,
         "last_trade_day": last_trade_day,
         "updated_at": now_iso(),
-    })
+    }
+    # 어떤 설정값으로 계산된 ATH인지 기록 → 다음 실행에서 설정 변경 감지에 사용
+    if reset_pct_used is not None:
+        state["reset_pct_used"] = float(reset_pct_used)
+    if lookback_used is not None:
+        state["lookback_used"] = str(lookback_used)
+    db.upsert_ath_state(state)
 
 
 # ============================================================
@@ -185,6 +211,7 @@ def run_intraday():
 
         levels = st.get("drawdown_levels", [10, 20, 30, 40])
         reset_pct = float(st.get("ath_reset_pct", 10))
+        lookback = st.get("ath_lookback", "5y")
         repeat = int(st.get("redrawdown_repeat_interval", 30))
         buy_enabled = st.get("enable_buy_levels", True)
         sell_enabled = st.get("enable_sell_signals", True)
@@ -210,14 +237,14 @@ def run_intraday():
                     print(f"  {ticker}: stale tick {tick_ts.astimezone(mtz)} — 휴장/장외 skip")
                     continue
 
-            obj, saved = get_or_build_ath(uid, ticker, st.get("ath_lookback", "5y"), reset_pct)
+            obj, saved = get_or_build_ath(uid, ticker, lookback, reset_pct)
             if obj is None:
                 continue
 
             is_new_day = not saved or saved.get("last_trade_day") != day
             if is_new_day and saved:
                 # 새 거래일 첫 실행: 확정 종가 히스토리로 ATH 재계산(확정 고점 갱신)
-                closes = get_daily_closes_for_ath(ticker, st.get("ath_lookback", "5y"))
+                closes = get_daily_closes_for_ath(ticker, lookback)
                 rebuilt = build_ath_from_history(closes, reset_pct=reset_pct) if closes else None
                 if rebuilt is not None:
                     obj = rebuilt
@@ -233,7 +260,7 @@ def run_intraday():
                 # 최초 평가(티커 추가 직후 포함): 이미 '지나간' 레벨을 baseline으로 억제.
                 # 현재가 한 점이 아니라 현재 ATH 구간의 과거 이력 전체에서 가장 깊은 하락·
                 # 가장 높은 초과상승을 기준으로 삼아야, 회복 후 등록해도 중복 알림이 안 간다.
-                hist = get_daily_closes_for_ath(ticker, st.get("ath_lookback", "5y"))
+                hist = get_daily_closes_for_ath(ticker, lookback)
                 if hist:
                     regime_dd, regime_gain = final_regime_extremes(hist, reset_pct)
                 else:
@@ -390,7 +417,8 @@ def run_intraday():
                                 notify.send_message(chat, msg)
                             level_last_alert[sell_key] = now_iso()
 
-            save_ath(uid, ticker, obj, baseline_level, active_levels, level_last_alert, day)
+            save_ath(uid, ticker, obj, baseline_level, active_levels, level_last_alert, day,
+                     reset_pct_used=reset_pct, lookback_used=lookback)
             print(f"  {ticker}: px={price:.2f} dd={dd:+.1f}% newly={newly}")
 
         # 나머지 티커(indicator/watchlist) ATH 상태 갱신 (알림 없음)
@@ -401,14 +429,15 @@ def run_intraday():
             price = get_current_price(ticker)
             if price is None:
                 continue
-            obj, saved = get_or_build_ath(uid, ticker, st.get("ath_lookback", "5y"), reset_pct)
+            obj, saved = get_or_build_ath(uid, ticker, lookback, reset_pct)
             if obj is None:
                 continue
             bl  = saved.get("baseline_level", 0)  if saved else 0
             al  = list(saved.get("active_levels", []))   if saved else []
             lla = dict(saved.get("level_last_alert", {})) if saved else {}
             ltd = saved.get("last_trade_day", day)        if saved else day
-            save_ath(uid, ticker, obj, bl, al, lla, ltd)
+            save_ath(uid, ticker, obj, bl, al, lla, ltd,
+                     reset_pct_used=reset_pct, lookback_used=lookback)
 
 
 # ============================================================
