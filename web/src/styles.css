@@ -360,9 +360,11 @@ input, select {
 /* 캡션 */
 .gauge-cap-row {
   display: flex; justify-content: center; align-items: center; gap: 4px;
-  margin-top: 2px; font-size: 12px; font-weight: 700;
+  flex-wrap: wrap; margin-top: 2px; font-size: 12px; font-weight: 700;
 }
 .gauge-cap-label { color: var(--text-dim); font-weight: 400; }
+.gauge-cap-date { color: var(--text-faint); font-weight: 400; }
+.gauge-cap-sep { color: var(--text-faint); font-weight: 400; margin: 0 2px; }
 .gauge-cap-dist { font-weight: 700; }
 .t-info { min-width: 0; }
 .t-sym {

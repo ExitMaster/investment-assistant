@@ -637,7 +637,15 @@ function buildGaugeWindow(c, buyLevels) {
   return { lo, hi, marks };
 }
 
-function computeGauge(price, ath, prevClose, buyLevels) {
+// 발화 시각(ISO) → "M/D" (없거나 잘못된 값이면 null)
+function fmtTriggerMD(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
   if (price == null || ath == null || ath <= 0) return null;
   const c = ((price - ath) / ath) * 100;
   const { lo, hi, marks } = buildGaugeWindow(c, buyLevels);
@@ -645,35 +653,54 @@ function computeGauge(price, ath, prevClose, buyLevels) {
   const posOf = (v) => ((Math.min(Math.max(v, lo), hi) - lo) / span) * 100;
   // 남은 거리는 직전 장마감 종가 기준(증권사 등락률과 동일 기준)으로 계산
   const base = prevClose && prevClose > 0 ? prevClose : price;
+  const la = lastAlerts || {};
 
-  // 캡션: 라벨(무채색) + 거리값(등락 방향 색) 분리
-  let capLabel, capDist = null, capDir;
+  // 캡션: 이전(직전 발화 레벨 + 날짜) · 다음(레벨 + 남은 거리)
+  let capPrev = null;        // { label, date }
+  let capNext;               // { label, dist, dir }
   if (c < 0) {
+    const dd = -c;
+    // 이전 매수: 이미 도달한 매수레벨 중 가장 깊은 것 (실제 발화 기록이 있을 때만)
+    const reached = buyLevels.filter((L) => L <= dd + 0.001).sort((a, b) => b - a);
+    if (reached.length) {
+      const date = fmtTriggerMD(la[String(reached[0])]);
+      if (date) capPrev = { label: `이전 매수(-${reached[0]}%)`, date };
+    }
+    // 다음 매수레벨
     const negs = buyLevels.map((L) => -L).sort((a, b) => b - a);   // -10,-20,…
     const deeper = negs.filter((L) => L < c - 0.001);
     if (deeper.length) {
       const next = deeper[0];                       // 도달할 다음 매수레벨(ATH 대비)
       const target = ath * (1 + next / 100);        // 그 레벨의 목표 가격
       const distPp = ((target - price) / base) * 100;  // 직전 종가 대비 추가 등락폭
-      capLabel = `다음 매수 ${next}% ·`;
-      capDist = `${distPp >= 0 ? "+" : ""}${distPp.toFixed(1)}%p`;
+      capNext = {
+        label: `다음 매수(${next}%)`,
+        dist: `${distPp >= 0 ? "+" : ""}${distPp.toFixed(1)}%p`,
+        dir: "down",
+      };
     } else {
-      capLabel = "최대 매수레벨 도달";
+      capNext = { label: "최대 매수레벨 도달", dist: null, dir: "down" };
     }
-    capDir = "down";
   } else {
-    const next = Math.floor(c / 10) * 10 + 10;
+    const floorLevel = Math.floor(c / 10) * 10;     // 0,10,20,…
+    const next = floorLevel + 10;
+    // 이전 매도: 직전 매도레벨(=floorLevel, 0이면 ATH 도달). 발화 기록이 있을 때만
+    const date = fmtTriggerMD(la[`sell_${floorLevel}`]);
+    if (date) {
+      capPrev = {
+        label: floorLevel === 0 ? "이전 매도(ATH 도달)" : `이전 매도(+${floorLevel}%)`,
+        date,
+      };
+    }
     const target = ath * (1 + next / 100);
     const distPp = ((target - price) / base) * 100;
-    capLabel = `다음 매도 +${next}% ·`;
-    capDist = `+${distPp.toFixed(1)}%p`;
-    capDir = "up";
+    capNext = { label: `다음 매도(+${next}%)`, dist: `+${distPp.toFixed(1)}%p`, dir: "up" };
   }
-  return { c, lo, hi, marks, posOf, capLabel, capDist, capDir };
+  return { c, lo, hi, marks, posOf, capPrev, capNext };
 }
 
-function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
-  const g = computeGauge(price, ath, prevClose, buyLevels);
+function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
+  const g = computeGauge(price, ath, prevClose, buyLevels, lastAlerts);
   if (!g) return <div className="gauge-empty">ATH 계산 중…</div>;
   const markerLeft = g.posOf(g.c);
   const zeroLeft = g.posOf(0);
@@ -722,12 +749,19 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels }) {
         </div>
       </div>
 
-      {/* ④ 캡션 */}
+      {/* ④ 캡션: 이전(발화 레벨·날짜) · 다음(레벨·남은 거리) */}
       <div className="gauge-cap-row">
-        <span className="gauge-cap-label">{g.capLabel}</span>
-        {g.capDist && (
-          <span className="gauge-cap-dist" style={{ color: g.capDir === "down" ? "var(--down)" : "var(--up)" }}>
-            {g.capDist}
+        {g.capPrev && (
+          <>
+            <span className="gauge-cap-label">{g.capPrev.label}</span>
+            <span className="gauge-cap-date">{g.capPrev.date}</span>
+            <span className="gauge-cap-sep">·</span>
+          </>
+        )}
+        <span className="gauge-cap-label">{g.capNext.label}</span>
+        {g.capNext.dist && (
+          <span className="gauge-cap-dist" style={{ color: g.capNext.dir === "down" ? "var(--down)" : "var(--up)" }}>
+            {g.capNext.dist}
           </span>
         )}
       </div>
@@ -814,7 +848,7 @@ function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDr
 
       {showGauge && expanded && !editMode && (
         <div className="gauge-row">
-          <StatusGauge price={price} ath={ath} prevClose={prevClose} sym={sym} buyLevels={buyLevels} />
+          <StatusGauge price={price} ath={ath} prevClose={prevClose} sym={sym} buyLevels={buyLevels} lastAlerts={athRow?.level_last_alert} />
         </div>
       )}
     </>
