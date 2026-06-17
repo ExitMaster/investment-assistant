@@ -357,7 +357,7 @@ input, select {
   transform: translateX(-50%);
   font-size: 10px; white-space: nowrap;
 }
-.gauge-cur-price { font-family: var(--mono); color: var(--text-dim); }
+.gauge-cur-price { font-family: var(--mono); color: var(--text); font-weight: 700; }
 .gauge-arrow { font-size: 10px; line-height: 1; }
 .gauge-day-chg { font-family: var(--mono); }
 /* 캡션 */
