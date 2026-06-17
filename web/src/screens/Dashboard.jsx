@@ -658,6 +658,7 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
   // 캡션: 이전(직전 발화 레벨 + 날짜) · 다음(레벨 + 남은 거리)
   let capPrev = null;        // { label, date }
   let capNext;               // { label, dist, dir }
+  let nextMark = null;       // 강조할 다음 레벨의 mark 값 (예: -20, +20)
   if (c < 0) {
     const dd = -c;
     // 이전 매수: 이미 도달한 매수레벨 중 가장 깊은 것 (실제 발화 기록이 있을 때만)
@@ -673,6 +674,7 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
       const next = deeper[0];                       // 도달할 다음 매수레벨(ATH 대비)
       const target = ath * (1 + next / 100);        // 그 레벨의 목표 가격
       const distPp = ((target - price) / base) * 100;  // 직전 종가 대비 추가 등락폭
+      nextMark = next;                              // e.g. -20
       capNext = {
         label: `다음 매수(${next}%)`,
         dist: `${distPp >= 0 ? "+" : ""}${distPp.toFixed(1)}%p`,
@@ -684,6 +686,7 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
   } else {
     const floorLevel = Math.floor(c / 10) * 10;     // 0,10,20,…
     const next = floorLevel + 10;
+    nextMark = next;                                 // e.g. +20
     // 이전 매도: 직전 매도레벨(=floorLevel, 0이면 ATH 도달). 발화 기록이 있을 때만
     const date = fmtTriggerMD(la[`sell_${floorLevel}`]);
     if (date) {
@@ -696,7 +699,7 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
     const distPp = ((target - price) / base) * 100;
     capNext = { label: `다음 매도(+${next}%)`, dist: `+${distPp.toFixed(1)}%p`, dir: "up" };
   }
-  return { c, lo, hi, marks, posOf, capPrev, capNext };
+  return { c, lo, hi, marks, posOf, capPrev, capNext, nextMark };
 }
 
 function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
@@ -748,7 +751,23 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
         </div>
       </div>
 
-      {/* ④ 캡션: 이전(발화 레벨·날짜) · 다음(레벨·남은 거리) */}
+      {/* ④ 레벨별 절대 가격 (ATH 제외, 다음 목표 레벨 강조) */}
+      <div className="gauge-levels">
+        {g.marks.filter((m) => m !== 0).map((m) => {
+          const levelPrice = ath * (1 + m / 100);
+          return (
+            <span
+              key={m}
+              className={`gauge-level-price${m === g.nextMark ? " next" : ""}`}
+              style={{ left: `${g.posOf(m)}%` }}
+            >
+              {fmtPrice(levelPrice, sym)}
+            </span>
+          );
+        })}
+      </div>
+
+      {/* ⑤ 캡션: 이전(발화 레벨·날짜) · 다음(레벨·남은 거리) */}
       <div className="gauge-cap-row">
         {g.capPrev && (
           <>

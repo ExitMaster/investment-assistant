@@ -320,7 +320,7 @@ input, select {
   white-space: nowrap;
 }
 .gauge-ath-name { font-size: 9px; color: var(--text-dim); font-family: var(--mono); font-weight: 700; line-height: 1; }
-.gauge-ath-val { font-size: 9px; color: var(--text-dim); font-family: var(--mono); font-weight: 700; }
+.gauge-ath-val { font-size: 9px; color: var(--text); font-family: var(--mono); font-weight: 700; }
 .gauge-pct-label {
   position: absolute; bottom: 2px;
   transform: translateX(-50%);
@@ -344,8 +344,23 @@ input, select {
 .gauge-tick.ath { width: 2px; height: 18px; top: -6px; background: var(--text-dim); }
 /* 바 아래 영역: 현재가 ▲/▼ 등락% */
 .gauge-below {
-  position: relative; height: 30px;
+  position: relative; height: 22px;
   margin: 0 8px;
+}
+/* 레벨별 절대가격 행 (현재가 행과 별도 행 → 겹침 없음) */
+.gauge-levels {
+  position: relative; height: 16px;
+  margin: 0 8px;
+}
+.gauge-level-price {
+  position: absolute; top: 0;
+  transform: translateX(-50%);
+  font-size: 9px; font-family: var(--mono);
+  color: var(--text-faint); font-weight: 400;
+  white-space: nowrap;
+}
+.gauge-level-price.next {
+  color: var(--text); font-weight: 700;
 }
 .gauge-marker-group {
   position: absolute; top: 6px;
