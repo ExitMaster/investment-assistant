@@ -61,6 +61,13 @@ export default function Admin({ flash }) {
       : `${who} 님의 admin 권한을 해제할까요?`;
     if (window.confirm(msg)) setRole(u.id, role);
   }
+  function confirmBlock(u) {
+    const who = u.display_name || u.email;
+    const msg = `${who} 님의 접근을 차단할까요?\n` +
+      `가입 정보와 설정은 그대로 보존되며, 언제든 다시 “승인”을 눌러 재활성화할 수 있습니다. ` +
+      `(사용자가 다시 요청할 필요 없음)`;
+    if (window.confirm(msg)) setStatus(u.id, "blocked");
+  }
 
   if (loading) return <div className="card"><p className="muted">사용자 불러오는 중…</p></div>;
 
@@ -141,7 +148,7 @@ export default function Admin({ flash }) {
             {/* 관리 버튼 */}
             <div className="row-inline" style={{ marginTop: 10 }}>
               {u.status !== "active" && <button className="btn-ghost" onClick={() => setStatus(u.id, "active")}>승인</button>}
-              {u.status === "active" && <button className="btn-danger" onClick={() => setStatus(u.id, "blocked")}>중지</button>}
+              {u.status === "active" && <button className="btn-danger" onClick={() => confirmBlock(u)}>접근 차단</button>}
               {u.status === "blocked" && <button className="btn-ghost" onClick={() => setStatus(u.id, "pending")}>대기로</button>}
               {u.role === "user"
                 ? <button className="btn-ghost" onClick={() => confirmRole(u, "admin")}>admin 부여</button>

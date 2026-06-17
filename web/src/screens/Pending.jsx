@@ -5,7 +5,7 @@ export default function Pending({ profile, onSignOut }) {
   return (
     <div className="center-screen">
       <div className="brand" style={{ fontSize: 22 }}>
-        Investment<span className="dot">·</span>Assistant
+        Investment Assistant
       </div>
       {blocked ? (
         <p className="muted" style={{ maxWidth: 360 }}>
