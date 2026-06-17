@@ -715,7 +715,6 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
       <div className="gauge-above">
         <div className="gauge-ath-tag" style={{ left: `${zeroLeft}%` }}>
           <span className="gauge-ath-name">ATH</span>
-          <span className="gauge-ath-tick" />
           <span className="gauge-ath-val">{fmtPrice(ath, sym)}</span>
         </div>
         {g.marks.filter((m) => m !== 0).map((m) => (

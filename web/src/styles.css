@@ -319,9 +319,8 @@ input, select {
   display: flex; flex-direction: row; align-items: center; gap: 3px;
   white-space: nowrap;
 }
-.gauge-ath-name { font-size: 9px; color: var(--text-dim); font-weight: 700; line-height: 1; }
-.gauge-ath-tick { width: 2px; height: 9px; background: var(--text-dim); border-radius: 1px; }
-.gauge-ath-val { font-size: 9px; color: var(--text); font-family: var(--mono); font-weight: 700; }
+.gauge-ath-name { font-size: 9px; color: var(--text-dim); font-family: var(--mono); font-weight: 700; line-height: 1; }
+.gauge-ath-val { font-size: 9px; color: var(--text-dim); font-family: var(--mono); font-weight: 700; }
 .gauge-pct-label {
   position: absolute; bottom: 2px;
   transform: translateX(-50%);
