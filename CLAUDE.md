@@ -154,6 +154,22 @@ README.md
 - 미구현/단순화: 보조지표 알림 시각의 개인별 정밀 매칭(대표 시각), 엔진 측 한국종목 티커 변환,
   매수 보조지표/매도의 일부 PDF 예외 규칙.
 
+## 나중에 할 것 (TODO, 우선순위 낮음)
+- **게이지 '직전 매수/매도' 도달일·도달가 캐싱**: 현재는 패널 펼칠 때마다 브라우저에서
+  `/api/history?range=3y` fetch 후 `runBacktest()`로 레벨 도달일을 계산(`Dashboard.jsx`의
+  `getLevelEvents`/`_btEventsCache`). 모듈 캐시라 한 세션 내 티커당 1회지만 새 세션/새로고침마다
+  재계산 → "전부 펼치기" 첫 클릭에 약간 느린 체감 있음(critical 아님, 방치 결정).
+  - 개선안 A(엔진 소유, 권장): `ath_state`에 `level_reaches` JSON 컬럼 추가
+    (`{"10":{"date","price"}, ..., "sell_0":{...}}`). 엔진이 ATH를 히스토리에서 재계산하는
+    시점(`build_ath_from_history`·매 거래일 첫 intraday)에 이미 메모리에 든 일봉으로 reach도 같이
+    뽑아 저장. 웹은 `ath_state` 한 줄만 읽어 즉시 표시(Yahoo fetch·브라우저 backtest 제거).
+    무효화는 공짜(reach가 바뀌는 트리거 = 새 일봉 깊은 레벨 도달·ATH 위로 갱신 = 엔진이 이미
+    처리하는 이벤트). 주의: 히스토리 깊이(깊은 폭락 시 ATH 구간이 수년 전 시작) → ATH 구간 갱신
+    시 1회 전량 계산, 이후 매일은 증분 업데이트. signals.py↔signals.js 로직 분리가 더 벌어지는
+    점·웹 폴백(reach 없으면 기존 브라우저 계산) 유지 필요는 비용.
+  - 개선안 B(저비용 임시방편): SessionStorage에 당일 날짜 키로 결과 저장 → 새로고침해도 당일
+    재사용. 코드 변경 최소, 엔진 무수정.
+
 ## 작업 방식
 - web/ 변경은 Vercel 자동 배포, engine/·workflow 변경은 Actions에 자동 반영.
 - 스키마 변경은 Supabase SQL Editor에서 별도 실행 필요(커넥터로 자동 안 됨).
