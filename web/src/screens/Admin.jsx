@@ -90,9 +90,9 @@ export default function Admin({ flash }) {
                   {u.role === "admin" && <span className="chip">admin</span>}
                   {u.telegram_linked
                     ? <span className="chip" style={{ background: "var(--up-bg)", color: "var(--up)" }}>
-                        TG {u.telegram_display_name ? `· ${u.telegram_display_name}` : "연결됨"}
+                        Telegram {u.telegram_display_name || "연결됨"}
                       </span>
-                    : <span className="chip" style={{ color: "var(--text-faint)" }}>TG 미연결</span>
+                    : <span className="chip" style={{ color: "var(--text-faint)" }}>Telegram 미연결</span>
                   }
                 </div>
                 <div className="t-sub">{u.email}</div>
