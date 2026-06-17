@@ -1258,7 +1258,7 @@ export default function Dashboard({ profile, flash }) {
       />
 
       <p className="hint" style={{ textAlign: "center", marginTop: 4, fontSize: 11 }}>
-        현재가 10초마다 갱신 · 미국/한국 시장 지원
+        미국/한국 시장 지원 · 현재가 10초마다 갱신
         {updatedAt
           ? ` · ${updatedAt.toLocaleTimeString("ko-KR", {
               hour: "2-digit", minute: "2-digit", second: "2-digit",
