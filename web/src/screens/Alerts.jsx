@@ -110,7 +110,7 @@ function MutePanel({ uid }) {
       {/* 마스터 차단 토글 */}
       <div className="toggle-row" style={{ marginTop: 0, borderBottom: "none" }}>
         <div>
-          <div className="toggle-label">알림 받기</div>
+          <div className="toggle-label">텔레그램 알림 받기</div>
         </div>
         <label className="switch">
           <input type="checkbox" checked={!masterOff} onChange={(e) => saveMaster(!e.target.checked)} />
@@ -274,15 +274,21 @@ export default function Alerts({ profile, onTelegramLinked }) {
     })();
   }, [profile.id]);
 
+  async function deleteAlert(id) {
+    if (!window.confirm("이 신호 기록을 삭제할까요?")) return;
+    await supabase.from("alerts").delete().eq("id", id).eq("user_id", profile.id);
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+  }
+
   return (
     <>
       <MutePanel uid={profile.id} />
       <div className="card">
-        <h2>알림 이력</h2>
+        <h2>신호 발생 이력</h2>
         {loading ? (
           <p className="muted">불러오는 중…</p>
         ) : alerts.length === 0 ? (
-          <p className="muted">아직 알림이 없습니다. 신호가 발생하면 여기와 텔레그램에 표시됩니다.</p>
+          <p className="muted">아직 매수/매도 신호가 없습니다. 신호가 발생하면 여기에 기록되고, 텔레그램으로 알림을 보냅니다.</p>
         ) : (
           alerts.map((a) => (
             <div className="alert-item" key={a.id}>
@@ -296,6 +302,17 @@ export default function Alerts({ profile, onTelegramLinked }) {
               <a className="alert-link" href={tvLink(a.ticker)} target="_blank" rel="noreferrer">
                 차트 ↗
               </a>
+              <button
+                onClick={() => deleteAlert(a.id)}
+                title="삭제"
+                style={{
+                  background: "none", border: "none",
+                  color: "var(--text-faint)", cursor: "pointer", fontSize: 15,
+                  padding: "2px 4px", lineHeight: 1,
+                }}
+              >
+                ×
+              </button>
             </div>
           ))
         )}

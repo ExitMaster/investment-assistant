@@ -154,9 +154,9 @@ def run_intraday():
         st = db.get_settings(uid)
         if not st:
             continue
-        if is_muted(st):
-            print(f"  {uid}: muted, skip")
-            continue
+        send_tg = not is_muted(st)
+        if not send_tg:
+            print(f"  {uid}: muted — 이력 기록, 텔레그램 생략")
 
         ticker_rows = db.get_index_tickers(uid)
         if not ticker_rows and st.get("index_ticker"):
@@ -243,11 +243,12 @@ def run_intraday():
                 for L in newly:
                     action = resolve_action(L, st, ticker_actions)
                     msg = notify.format_buy_level(ticker, L, price, obj.ath, -dd, name=name, action=action)
-                    if notify.send_message(chat, msg):
-                        db.insert_alert({
-                            "user_id": uid, "ticker": ticker, "kind": "buy_level",
-                            "level": f"-{L}%", "message": msg, "price": price, "ath": obj.ath,
-                        })
+                    db.insert_alert({
+                        "user_id": uid, "ticker": ticker, "kind": "buy_level",
+                        "level": f"-{L}%", "message": msg, "price": price, "ath": obj.ath,
+                    })
+                    if send_tg:
+                        notify.send_message(chat, msg)
                     active_levels.append(L)
                     level_last_alert[str(L)] = now_iso()
 
@@ -264,12 +265,13 @@ def run_intraday():
                         msg = notify.format_buy_level(
                             ticker, cur_deep, price, obj.ath, -dd, name=name, action=action
                         ) + f"\n(구간 유지 · {repeat}분 재알림)"
-                        if notify.send_message(chat, msg):
-                            db.insert_alert({
-                                "user_id": uid, "ticker": ticker, "kind": "buy_level",
-                                "level": f"-{cur_deep}%(유지)", "message": msg,
-                                "price": price, "ath": obj.ath,
-                            })
+                        db.insert_alert({
+                            "user_id": uid, "ticker": ticker, "kind": "buy_level",
+                            "level": f"-{cur_deep}%(유지)", "message": msg,
+                            "price": price, "ath": obj.ath,
+                        })
+                        if send_tg:
+                            notify.send_message(chat, msg)
                         level_last_alert[str(cur_deep)] = now_iso()
             else:
                 newly, cur_deep, dd = evaluate_buy_levels(
@@ -288,11 +290,12 @@ def run_intraday():
                             action = resolve_action(L, st, ticker_actions)
                             msg = notify.format_prealert(
                                 ticker, L, price, obj.ath, -dd_abs, gap, name=name, action=action)
-                            if notify.send_message(chat, msg):
-                                db.insert_alert({
-                                    "user_id": uid, "ticker": ticker, "kind": "prealert",
-                                    "level": f"-{L}%임박", "message": msg, "price": price, "ath": obj.ath,
-                                })
+                            db.insert_alert({
+                                "user_id": uid, "ticker": ticker, "kind": "prealert",
+                                "level": f"-{L}%임박", "message": msg, "price": price, "ath": obj.ath,
+                            })
+                            if send_tg:
+                                notify.send_message(chat, msg)
                             level_last_alert[key] = now_iso()
                         break
 
@@ -307,12 +310,13 @@ def run_intraday():
                         if key not in level_last_alert:
                             msg = notify.format_prealert_sell(
                                 ticker, L, price, obj.ath, gain_now, gap, name=name)
-                            if notify.send_message(chat, msg):
-                                db.insert_alert({
-                                    "user_id": uid, "ticker": ticker, "kind": "prealert",
-                                    "level": (f"+{L}%임박" if L > 0 else "ATH도달임박"),
-                                    "message": msg, "price": price, "ath": obj.ath,
-                                })
+                            db.insert_alert({
+                                "user_id": uid, "ticker": ticker, "kind": "prealert",
+                                "level": (f"+{L}%임박" if L > 0 else "ATH도달임박"),
+                                "message": msg, "price": price, "ath": obj.ath,
+                            })
+                            if send_tg:
+                                notify.send_message(chat, msg)
                             level_last_alert[key] = now_iso()
                         break
 
@@ -342,12 +346,13 @@ def run_intraday():
                                                      cash_target=sell_cash_target)
                             if is_repeat_sell:
                                 msg += f"\n(구간 유지 · {repeat}분 재알림)"
-                            if notify.send_message(chat, msg):
-                                db.insert_alert({
-                                    "user_id": uid, "ticker": ticker, "kind": "sell",
-                                    "level": f"+{hit}%" if hit > 0 else "ATH도달",
-                                    "message": msg, "price": price, "ath": obj.ath,
-                                })
+                            db.insert_alert({
+                                "user_id": uid, "ticker": ticker, "kind": "sell",
+                                "level": f"+{hit}%" if hit > 0 else "ATH도달",
+                                "message": msg, "price": price, "ath": obj.ath,
+                            })
+                            if send_tg:
+                                notify.send_message(chat, msg)
                             level_last_alert[sell_key] = now_iso()
 
             save_ath(uid, ticker, obj, baseline_level, active_levels, level_last_alert, day)
@@ -391,9 +396,9 @@ def run_indicators():
         st = db.get_settings(uid)
         if not st:
             continue
-        if is_muted(st):
-            print(f"  {uid}: muted, skip")
-            continue
+        send_tg = not is_muted(st)
+        if not send_tg:
+            print(f"  {uid}: muted — 이력 기록, 텔레그램 생략")
 
         alert_times = st.get("indicator_alert_times") or []
         now_utc = datetime.now(timezone.utc)
@@ -426,20 +431,24 @@ def run_indicators():
 
                 # 매수 계열
                 msg = notify.format_indicator(tkr, sig, name=tname)
-                if msg and notify.send_message(chat, msg):
+                if msg:
                     db.insert_alert({
                         "user_id": uid, "ticker": tkr, "kind": "buy_indicator",
                         "level": "보조지표", "message": msg, "price": px, "ath": None,
                     })
+                    if send_tg:
+                        notify.send_message(chat, msg)
 
                 # 매도 계열 예외 (하락 다이버전스 / 고점 대량거래)
                 if sell_on:
                     smsg = notify.format_sell_indicator(tkr, sig, name=tname)
-                    if smsg and notify.send_message(chat, smsg):
+                    if smsg:
                         db.insert_alert({
                             "user_id": uid, "ticker": tkr, "kind": "sell_indicator",
                             "level": "보조지표", "message": smsg, "price": px, "ath": None,
                         })
+                        if send_tg:
+                            notify.send_message(chat, smsg)
 
         if st.get("enable_watchlist", True):
             for row in db.get_watchlist(uid):
@@ -453,12 +462,13 @@ def run_indicators():
                 sig = evaluate_indicators(df, st)
                 if sig["dmi_buy"]:
                     msg = notify.format_watchlist(wt, sig, name=wname)
-                    if notify.send_message(chat, msg):
-                        db.insert_alert({
-                            "user_id": uid, "ticker": wt, "kind": "watchlist",
-                            "level": "DMI", "message": msg,
-                            "price": float(df["Close"].iloc[-1]), "ath": None,
-                        })
+                    db.insert_alert({
+                        "user_id": uid, "ticker": wt, "kind": "watchlist",
+                        "level": "DMI", "message": msg,
+                        "price": float(df["Close"].iloc[-1]), "ath": None,
+                    })
+                    if send_tg:
+                        notify.send_message(chat, msg)
 
 
 # ============================================================
