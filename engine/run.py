@@ -172,6 +172,7 @@ def run_intraday():
         sell_cash_target = None if st.get("include_action_guide") is False else st.get("sell_cash_target", 30)
         prealert_enabled = bool(st.get("prealert_enabled", False))
         prealert_pp = float(st.get("prealert_pp", 2.0) or 2.0)
+        inverted = bool(st.get("color_inverted"))
 
         tickers_set = {r["ticker"] for r in ticker_rows}
 
@@ -179,7 +180,7 @@ def run_intraday():
             ticker = row["ticker"]
             name = row.get("name")
             ticker_actions = row.get("buy_actions")
-            price, tick_ts = get_current_quote(ticker)
+            price, tick_ts, prev_close = get_current_quote(ticker)
             if price is None:
                 print(f"  {ticker}: no price"); continue
 
@@ -242,7 +243,12 @@ def run_intraday():
                     price, obj, levels, baseline_level, active_levels)
                 for L in newly:
                     action = resolve_action(L, st, ticker_actions)
-                    msg = notify.format_buy_level(ticker, L, price, obj.ath, -dd, name=name, action=action)
+                    nxt = next((x for x in sorted(levels) if x > L), None)
+                    ngap = (nxt - dd) if nxt is not None else None
+                    msg = notify.format_buy_level(
+                        ticker, L, price, obj.ath, -dd, name=name, action=action,
+                        inverted=inverted, prev_close=prev_close,
+                        next_level=nxt, next_gap=ngap)
                     db.insert_alert({
                         "user_id": uid, "ticker": ticker, "kind": "buy_level",
                         "level": f"-{L}%", "message": msg, "price": price, "ath": obj.ath,
@@ -262,8 +268,12 @@ def run_intraday():
                         send_repeat = elapsed >= repeat
                     if send_repeat and cur_deep not in newly:
                         action = resolve_action(cur_deep, st, ticker_actions)
+                        nxt = next((x for x in sorted(levels) if x > cur_deep), None)
+                        ngap = (nxt - dd) if nxt is not None else None
                         msg = notify.format_buy_level(
-                            ticker, cur_deep, price, obj.ath, -dd, name=name, action=action
+                            ticker, cur_deep, price, obj.ath, -dd, name=name, action=action,
+                            inverted=inverted, prev_close=prev_close,
+                            next_level=nxt, next_gap=ngap
                         ) + f"\n(구간 유지 · {repeat}분 재알림)"
                         db.insert_alert({
                             "user_id": uid, "ticker": ticker, "kind": "buy_level",
@@ -342,8 +352,12 @@ def run_intraday():
                                 is_repeat_sell = True
 
                         if should_alert:
-                            msg = notify.format_sell(ticker, hit, price, obj.ath, gain, name=name,
-                                                     cash_target=sell_cash_target)
+                            nxt = next((x for x in sorted(SELL_LEVELS) if x > hit), None)
+                            ngap = (nxt - gain) if nxt is not None else None
+                            msg = notify.format_sell(
+                                ticker, hit, price, obj.ath, gain, name=name,
+                                cash_target=sell_cash_target, inverted=inverted,
+                                prev_close=prev_close, next_level=nxt, next_gap=ngap)
                             if is_repeat_sell:
                                 msg += f"\n(구간 유지 · {repeat}분 재알림)"
                             db.insert_alert({

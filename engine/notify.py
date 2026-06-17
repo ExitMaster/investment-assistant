@@ -70,6 +70,36 @@ def _fmt_price(price, ticker):
     return f"{price:,.2f}"
 
 
+def _tv_link(ticker):
+    """TradingView 차트 URL. 모바일에 앱이 설치돼 있으면 앱으로 열린다(유니버설 링크)."""
+    if _is_kr(ticker):
+        sym = f"KRX:{ticker.split('.')[0]}"
+    else:
+        sym = ticker
+    return "https://www.tradingview.com/chart/?symbol=" + urllib.parse.quote(sym, safe=":")
+
+
+def _ticker_link(ticker, name=None):
+    """티커 표시명을 TradingView 링크로 감싼다."""
+    return f'<a href="{_tv_link(ticker)}">{_ticker_display(ticker, name)}</a>'
+
+
+def _dir_icon(is_up_event, inverted=False):
+    """방향+색상 아이콘. is_up_event: True=상승(매도)·False=하락(매수).
+    기본 색상은 상승=초록·하락=빨강. color_inverted면 반대."""
+    green = (is_up_event != inverted)
+    return ("🟢" if green else "🔴") + ("⬆️" if is_up_event else "⬇️")
+
+
+def _chg_suffix(price, prev_close):
+    """전일 종가 대비 등락률 꼬리표. prev_close 없으면 빈 문자열."""
+    if not prev_close:
+        return ""
+    pct = (price / prev_close - 1) * 100
+    arrow = "▲" if pct >= 0 else "▼"
+    return f"  {arrow}{abs(pct):.1f}% (전일)"
+
+
 def send_message(chat_id, text, with_footer=True):
     """단일 사용자에게 메시지 발송. 성공 여부 반환."""
     if not BOT_TOKEN or not chat_id:
@@ -108,21 +138,28 @@ def _buy_action_line(action):
     return ""
 
 
-def format_buy_level(ticker, level, price, ath, dd, name=None, action=None):
-    disp = _ticker_display(ticker, name)
+def format_buy_level(ticker, level, price, ath, dd, name=None, action=None,
+                     inverted=False, prev_close=None, next_level=None, next_gap=None):
+    """매수 레벨 도달 알림.
+    dd: ATH 대비 현재 등락률(음수). next_level/next_gap: 다음 매수레벨과 남은 %p."""
+    icon = _dir_icon(False, inverted)
+    link = _ticker_link(ticker, name)
     p = _fmt_price(price, ticker)
     a = _fmt_price(ath, ticker)
-    return (
-        f"🔻 <b>{disp} 매수 신호</b>\n"
-        f"ATH 대비 <b>-{level}%</b> 하락 도달\n"
-        f"현재가 {p}  |  ATH {a} ({dd:+.1f}%)"
-        f"{_buy_action_line(action)}"
-    )
+    lines = [
+        f"{icon} <b>{link} 매수 신호</b>",
+        f"매수 <b>-{level}%</b> 레벨 도달",
+        f"현재가 {p}{_chg_suffix(price, prev_close)}",
+        f"ATH {a}  ·  현재 {dd:+.1f}%",
+    ]
+    if next_level is not None and next_gap is not None:
+        lines.append(f"다음 -{next_level}%까지 -{next_gap:.1f}%p")
+    return "\n".join(lines) + _buy_action_line(action)
 
 
 def format_prealert(ticker, level, price, ath, dd, gap, name=None, action=None):
     """다음 매수레벨 임박 예고. gap: 레벨까지 남은 %p(양수)."""
-    disp = _ticker_display(ticker, name)
+    disp = _ticker_link(ticker, name)
     p = _fmt_price(price, ticker)
     a = _fmt_price(ath, ticker)
     line = _buy_action_line(action)
@@ -137,7 +174,7 @@ def format_prealert(ticker, level, price, ath, dd, gap, name=None, action=None):
 
 def format_prealert_sell(ticker, level, price, ath, gain, gap, name=None):
     """다음 매도레벨 임박 예고. gap: 레벨까지 남은 %p(양수)."""
-    disp = _ticker_display(ticker, name)
+    disp = _ticker_link(ticker, name)
     p = _fmt_price(price, ticker)
     a = _fmt_price(ath, ticker)
     target = "ATH 도달" if level == 0 else f"+{level}%"
@@ -148,29 +185,30 @@ def format_prealert_sell(ticker, level, price, ath, gain, gap, name=None):
     )
 
 
-def format_sell(ticker, level, price, ath, gain, name=None, cash_target=None):
-    disp = _ticker_display(ticker, name)
+def format_sell(ticker, level, price, ath, gain, name=None, cash_target=None,
+                inverted=False, prev_close=None, next_level=None, next_gap=None):
+    """매도 레벨(ATH 도달/초과) 알림.
+    gain: ATH 대비 현재 등락률. next_level/next_gap: 다음 매도레벨과 남은 %p."""
+    icon = _dir_icon(True, inverted)
+    link = _ticker_link(ticker, name)
     p = _fmt_price(price, ticker)
     a = _fmt_price(ath, ticker)
+    head = "매도 <b>ATH 도달</b>" if level == 0 else f"매도 <b>+{level}%</b> 레벨 도달"
+    lines = [
+        f"{icon} <b>{link} 매도 신호</b>",
+        head,
+        f"현재가 {p}{_chg_suffix(price, prev_close)}",
+        f"ATH {a}  ·  현재 {gain:+.1f}%",
+    ]
+    if next_level is not None and next_gap is not None:
+        lines.append(f"다음 +{next_level}%까지 +{next_gap:.1f}%p")
     tail = f"\n→ 레버리지 높은 종목부터 매도 · 현금비중 {cash_target}% 목표" if cash_target not in (None, "") else ""
-    if level == 0:
-        return (
-            f"🔺 <b>{disp} 매도 신호</b>\n"
-            f"ATH <b>도달</b>\n"
-            f"현재가 {p}  |  ATH {a}"
-            f"{tail}"
-        )
-    return (
-        f"🔺 <b>{disp} 매도 신호</b>\n"
-        f"ATH 대비 <b>+{level}%</b> 초과 상승\n"
-        f"현재가 {p}  |  ATH {a}"
-        f"{tail}"
-    )
+    return "\n".join(lines) + tail
 
 
 def format_indicator(ticker, signals, name=None):
     """매수 계열 보조지표 신호. 발생한 항목이 없으면 None."""
-    disp = _ticker_display(ticker, name)
+    disp = _ticker_link(ticker, name)
     v = signals.get("dmi_values", {})
     lines = []
     if signals.get("dmi_buy"):
@@ -190,7 +228,7 @@ def format_indicator(ticker, signals, name=None):
 
 def format_sell_indicator(ticker, signals, name=None):
     """매도 계열 보조지표 예외 신호. 발생한 항목이 없으면 None."""
-    disp = _ticker_display(ticker, name)
+    disp = _ticker_link(ticker, name)
     lines = []
     if signals.get("bear_div"):
         bv = signals.get("bear_div_values") or {}
@@ -204,10 +242,9 @@ def format_sell_indicator(ticker, signals, name=None):
 
 
 def format_watchlist(ticker, signals, name=None):
-    disp = _ticker_display(ticker, name)
+    disp = _ticker_link(ticker, name)
     v = signals["dmi_values"]
     return (
-        f"⭐ <b>개별주식 DMI 매수 신호</b>\n"
-        f"[{disp} DMI 매수신호 발생]\n"
+        f"⭐ <b>{disp} 개별주식 DMI 매수 신호</b>\n"
         f"DI-={v['minus_di']}, ADX={v['adx']}"
     )

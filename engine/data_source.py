@@ -62,11 +62,20 @@ def get_current_price(ticker):
 
 
 def get_current_quote(ticker):
-    """(현재가, 최신 틱 시각 UTC) 반환. 시각을 못 얻으면 (가격, None).
-    휴장/장외 판별(신선도 가드)에 사용한다."""
+    """(현재가, 최신 틱 시각 UTC, 전일 종가) 반환. 시각/전일종가를 못 얻으면 None.
+    휴장/장외 판별(신선도 가드)·전일대비 등락률 표시에 사용한다."""
     for attempt in range(3):
         try:
             t = yf.Ticker(ticker)
+            prev_close = None
+            try:
+                fi = t.fast_info
+                pc = fi.get("previousClose") or fi.get("regularMarketPreviousClose") \
+                    or fi.get("previous_close")
+                if pc:
+                    prev_close = float(pc)
+            except Exception:
+                prev_close = None
             df = t.history(period="1d", interval="1m")
             if len(df):
                 price = float(df["Close"].iloc[-1])
@@ -75,16 +84,16 @@ def get_current_quote(ticker):
                     ts = ts.replace(tzinfo=timezone.utc)
                 else:
                     ts = ts.astimezone(timezone.utc)
-                return price, ts
-            fi = getattr(t, "fast_info", None)
-            if fi:
-                px = fi.get("last_price") or fi.get("lastPrice")
+                return price, ts, prev_close
+            fi2 = getattr(t, "fast_info", None)
+            if fi2:
+                px = fi2.get("last_price") or fi2.get("lastPrice")
                 if px:
-                    return float(px), None
+                    return float(px), None, prev_close
         except Exception as e:
             print(f"[data] {ticker} quote attempt {attempt+1} failed: {e}")
             time.sleep(2)
-    return None, None
+    return None, None, None
 
 
 def get_daily_closes_for_ath(ticker, lookback):
