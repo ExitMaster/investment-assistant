@@ -1,6 +1,28 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "../supabase.js";
 import { getQuotes, searchTickers, resolveKR } from "../quotes.js";
+import { runBacktest } from "../lib/signals.js";
+
+// 게이지 직전-레벨 날짜 계산용: 티커별 일봉 백테스트 결과(매수/매도 도달 이벤트) 캐시.
+// 펼친 티커에 대해서만 1회 fetch + 계산. 같은 세션 내 재펼침은 캐시 재사용.
+const _btEventsCache = new Map();  // sym → Promise<events[]>
+function getLevelEvents(sym, settings) {
+  if (_btEventsCache.has(sym)) return _btEventsCache.get(sym);
+  const p = (async () => {
+    try {
+      const r = await fetch(`/api/history?ticker=${encodeURIComponent(sym)}&range=3y`);
+      if (!r.ok) return [];
+      const data = await r.json();
+      if (!data?.close?.length) return [];
+      const { events } = runBacktest(data, settings);
+      return events.filter((e) => e.type === "buy_level" || e.type === "sell");
+    } catch {
+      return [];
+    }
+  })();
+  _btEventsCache.set(sym, p);
+  return p;
+}
 
 /* ── 유틸 ── */
 function pct(a, b) {
@@ -637,15 +659,22 @@ function buildGaugeWindow(c, buyLevels) {
   return { lo, hi, marks };
 }
 
-// 발화 시각(ISO) → "M/D" (없거나 잘못된 값이면 null)
-function fmtTriggerMD(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return null;
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+// "YYYY-MM-DD" → "M/D" (없거나 잘못된 값이면 null)
+function fmtDayMD(day) {
+  if (!day || typeof day !== "string") return null;
+  const parts = day.split("-");
+  if (parts.length !== 3) return null;
+  return `${+parts[1]}/${+parts[2]}`;
+}
+// 백테스트 이벤트(가격 도달 이력)에서 해당 label의 가장 최근 도달일(M/D)을 찾음
+function lastReachMD(events, label) {
+  if (!events) return null;
+  let day = null;
+  for (const e of events) if (e.label === label) day = e.time;  // 시간순 → 마지막=최근
+  return fmtDayMD(day);
 }
 
-function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
+function computeGauge(price, ath, prevClose, buyLevels, levelEvents) {
   if (price == null || ath == null || ath <= 0) return null;
   const c = ((price - ath) / ath) * 100;
   const { lo, hi, marks } = buildGaugeWindow(c, buyLevels);
@@ -653,18 +682,17 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
   const posOf = (v) => ((Math.min(Math.max(v, lo), hi) - lo) / span) * 100;
   // 남은 거리는 직전 장마감 종가 기준(증권사 등락률과 동일 기준)으로 계산
   const base = prevClose && prevClose > 0 ? prevClose : price;
-  const la = lastAlerts || {};
 
-  // 캡션: 직전(발화 날짜·ATH 대비%) · 다음(레벨 + 남은 거리)
+  // 캡션: 직전(가격이 그 레벨에 도달한 날·ATH 대비%) · 다음(레벨 + 남은 거리)
   let capPrev = null;        // 문자열: "직전 매수 (M/D, ATH -10%)" 또는 null
   let capNext;               // { label, dist, dir }
   let nextMark = null;       // 강조할 다음 레벨의 mark 값 (예: -20, +20)
   if (c < 0) {
     const dd = -c;
-    // 직전 매수: 이미 도달한 매수레벨 중 가장 깊은 것 (실제 발화 기록이 있을 때만)
+    // 직전 매수: 이미 도달한 매수레벨 중 가장 깊은 것 (가격이 실제 도달한 이력이 있을 때만)
     const reached = buyLevels.filter((L) => L <= dd + 0.001).sort((a, b) => b - a);
     if (reached.length) {
-      const date = fmtTriggerMD(la[String(reached[0])]);
+      const date = lastReachMD(levelEvents, `매수 -${reached[0]}%`);
       if (date) capPrev = `직전 매수 (${date}, ATH -${reached[0]}%)`;
     }
     // 다음 매수레벨
@@ -687,8 +715,9 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
     const floorLevel = Math.floor(c / 10) * 10;     // 0,10,20,…
     const next = floorLevel + 10;
     nextMark = next;                                 // e.g. +20
-    // 직전 매도: 직전 매도레벨(=floorLevel, 0이면 ATH 도달). 발화 기록이 있을 때만
-    const date = fmtTriggerMD(la[`sell_${floorLevel}`]);
+    // 직전 매도: 직전 매도레벨(=floorLevel, 0이면 ATH 도달). 가격 도달 이력이 있을 때만
+    const evLabel = floorLevel === 0 ? "매도 ATH" : `매도 +${floorLevel}%`;
+    const date = lastReachMD(levelEvents, evLabel);
     if (date) {
       const athPart = floorLevel === 0 ? "ATH 도달" : `ATH +${floorLevel}%`;
       capPrev = `직전 매도 (${date}, ${athPart})`;
@@ -700,8 +729,17 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
   return { c, lo, hi, marks, posOf, capPrev, capNext, nextMark };
 }
 
-function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
-  const g = computeGauge(price, ath, prevClose, buyLevels, lastAlerts);
+function StatusGauge({ price, ath, prevClose, sym, buyLevels, resetPct }) {
+  // 직전 레벨 도달일: 일봉 백테스트로 가격 도달 이력을 구함 (펼침 시 1회, 캐시)
+  const [levelEvents, setLevelEvents] = useState(null);
+  useEffect(() => {
+    let cancel = false;
+    getLevelEvents(sym, { resetPct, levels: buyLevels, sellLevels: [0, 10, 20, 30] })
+      .then((ev) => { if (!cancel) setLevelEvents(ev); });
+    return () => { cancel = true; };
+  }, [sym, resetPct]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const g = computeGauge(price, ath, prevClose, buyLevels, levelEvents);
   if (!g) return <div className="gauge-empty">ATH 계산 중…</div>;
   const markerLeft = g.posOf(g.c);
   const zeroLeft = g.posOf(0);
@@ -786,7 +824,7 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
 
 /* ── 티커 한 행 ── */
 function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDragging, isDragOver,
-                    showGauge, expanded, onToggle, buyLevels, krInfo }) {
+                    showGauge, expanded, onToggle, buyLevels, resetPct, krInfo }) {
   const q = quotes[sym];
   const athRow = athMap[sym];
   const ath = athRow?.ath ?? null;
@@ -863,7 +901,7 @@ function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDr
 
       {showGauge && expanded && !editMode && (
         <div className="gauge-row">
-          <StatusGauge price={price} ath={ath} prevClose={prevClose} sym={sym} buyLevels={buyLevels} lastAlerts={athRow?.level_last_alert} />
+          <StatusGauge price={price} ath={ath} prevClose={prevClose} sym={sym} buyLevels={buyLevels} resetPct={resetPct} />
         </div>
       )}
     </>
@@ -878,7 +916,7 @@ function SectionCard({
   onAdd, addDisabled, addLabel,
   adding, onCancelAdd, onSelectAdd,
   searchPlaceholder, searchHint,
-  withGauge, buyLevels, krNames,
+  withGauge, buyLevels, resetPct, krNames,
   alertKeys, settings, onToggleAlert,
 }) {
   const [showNote, setShowNote] = useState(false);
@@ -976,6 +1014,7 @@ function SectionCard({
             expanded={expanded.has(sym)}
             onToggle={toggleExpand}
             buyLevels={buyLevels}
+            resetPct={resetPct}
             krInfo={krNames?.[sym.split(".")[0]]}
           />
         ))}
@@ -1243,6 +1282,7 @@ export default function Dashboard({ profile, flash }) {
         searchHint="ATH 대비 하락율∙매도 신호를 계산할 지수 티커. 최대 10개."
         withGauge
         buyLevels={settings?.drawdown_levels ?? [10, 20, 30, 40]}
+        resetPct={settings?.ath_reset_pct ?? 10}
         krNames={krNames}
         settings={settings}
         onToggleAlert={setAlertFlag}

@@ -2,7 +2,17 @@
 // 브라우저 → 이 함수(같은 도메인) → Yahoo (서버간, CORS 없음) → 일봉 OHLCV 반환.
 // 백테스트 시각화용. init-ath.js와 동일한 Yahoo chart 패턴.
 
-const RANGE_OK = new Set(["6mo", "1y", "2y", "5y", "10y", "max"]);
+const RANGE_OK = new Set(["6mo", "1y", "2y", "3y", "5y", "10y", "max"]);
+
+// Yahoo chart는 "3y" range를 지원하지 않으므로 period1/period2로 변환.
+function yahooRangeParam(range) {
+  if (range === "3y") {
+    const now = Math.floor(Date.now() / 1000);
+    const p1 = now - Math.floor(3 * 365.25 * 86400);
+    return `period1=${p1}&period2=${now}`;
+  }
+  return `range=${range}`;
+}
 
 export default async function handler(req, res) {
   const ticker = (req.query.ticker || "").trim();
@@ -18,7 +28,7 @@ export default async function handler(req, res) {
   const fetchOne = async (sym) => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
       sym
-    )}?interval=1d&range=${range}`;
+    )}?interval=1d&${yahooRangeParam(range)}`;
     const r = await fetch(url, {
       headers: {
         "User-Agent":
