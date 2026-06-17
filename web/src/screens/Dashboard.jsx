@@ -655,17 +655,17 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
   const base = prevClose && prevClose > 0 ? prevClose : price;
   const la = lastAlerts || {};
 
-  // 캡션: 이전(직전 발화 레벨 + 날짜) · 다음(레벨 + 남은 거리)
-  let capPrev = null;        // { label, date }
+  // 캡션: 직전(발화 날짜·ATH 대비%) · 다음(레벨 + 남은 거리)
+  let capPrev = null;        // 문자열: "직전 매수 (M/D, ATH -10%)" 또는 null
   let capNext;               // { label, dist, dir }
   let nextMark = null;       // 강조할 다음 레벨의 mark 값 (예: -20, +20)
   if (c < 0) {
     const dd = -c;
-    // 이전 매수: 이미 도달한 매수레벨 중 가장 깊은 것 (실제 발화 기록이 있을 때만)
+    // 직전 매수: 이미 도달한 매수레벨 중 가장 깊은 것 (실제 발화 기록이 있을 때만)
     const reached = buyLevels.filter((L) => L <= dd + 0.001).sort((a, b) => b - a);
     if (reached.length) {
       const date = fmtTriggerMD(la[String(reached[0])]);
-      if (date) capPrev = { label: `이전 매수(-${reached[0]}%)`, date };
+      if (date) capPrev = `직전 매수 (${date}, ATH -${reached[0]}%)`;
     }
     // 다음 매수레벨
     const negs = buyLevels.map((L) => -L).sort((a, b) => b - a);   // -10,-20,…
@@ -676,7 +676,7 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
       const distPp = ((target - price) / base) * 100;  // 직전 종가 대비 추가 등락폭
       nextMark = next;                              // e.g. -20
       capNext = {
-        label: `다음 매수(${next}%)`,
+        label: `다음 매수(ATH ${next}%)`,
         dist: `${distPp >= 0 ? "+" : ""}${distPp.toFixed(1)}%p`,
         dir: "down",
       };
@@ -687,17 +687,15 @@ function computeGauge(price, ath, prevClose, buyLevels, lastAlerts) {
     const floorLevel = Math.floor(c / 10) * 10;     // 0,10,20,…
     const next = floorLevel + 10;
     nextMark = next;                                 // e.g. +20
-    // 이전 매도: 직전 매도레벨(=floorLevel, 0이면 ATH 도달). 발화 기록이 있을 때만
+    // 직전 매도: 직전 매도레벨(=floorLevel, 0이면 ATH 도달). 발화 기록이 있을 때만
     const date = fmtTriggerMD(la[`sell_${floorLevel}`]);
     if (date) {
-      capPrev = {
-        label: floorLevel === 0 ? "이전 매도(ATH 도달)" : `이전 매도(+${floorLevel}%)`,
-        date,
-      };
+      const athPart = floorLevel === 0 ? "ATH 도달" : `ATH +${floorLevel}%`;
+      capPrev = `직전 매도 (${date}, ${athPart})`;
     }
     const target = ath * (1 + next / 100);
     const distPp = ((target - price) / base) * 100;
-    capNext = { label: `다음 매도(+${next}%)`, dist: `+${distPp.toFixed(1)}%p`, dir: "up" };
+    capNext = { label: `다음 매도(ATH +${next}%)`, dist: `+${distPp.toFixed(1)}%p`, dir: "up" };
   }
   return { c, lo, hi, marks, posOf, capPrev, capNext, nextMark };
 }
@@ -771,8 +769,7 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels, lastAlerts }) {
       <div className="gauge-cap-row">
         {g.capPrev && (
           <>
-            <span className="gauge-cap-label">{g.capPrev.label}</span>
-            <span className="gauge-cap-date">{g.capPrev.date}</span>
+            <span className="gauge-cap-label">{g.capPrev}</span>
             <span className="gauge-cap-sep">·</span>
           </>
         )}
