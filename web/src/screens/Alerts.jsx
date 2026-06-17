@@ -110,10 +110,10 @@ function MutePanel({ uid }) {
       {/* 마스터 차단 토글 */}
       <div className="toggle-row" style={{ marginTop: 0, borderBottom: "none" }}>
         <div>
-          <div className="toggle-label">알림 전체 차단</div>
+          <div className="toggle-label">알림 받기</div>
         </div>
         <label className="switch">
-          <input type="checkbox" checked={masterOff} onChange={(e) => saveMaster(e.target.checked)} />
+          <input type="checkbox" checked={!masterOff} onChange={(e) => saveMaster(!e.target.checked)} />
           <span />
         </label>
       </div>
