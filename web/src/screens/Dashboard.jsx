@@ -198,7 +198,7 @@ function BellToggle({ alertKeys, settings, onChange }) {
   }, [showDetail]);
 
   const Icon = allOff ? BellOffIcon : allOn ? BellFilledIcon : BellOutlineIcon;
-  const color = allOff ? "var(--text-faint)" : "#f0883e";
+  const color = allOff ? "var(--text-faint)" : "#eab308";
 
   return (
     <div className="bell-wrap" ref={wrapRef} style={{ position: "relative" }}>
