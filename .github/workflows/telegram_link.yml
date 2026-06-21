@@ -1,10 +1,10 @@
 name: telegram-link
 
 # 사용자가 봇에 /start 를 보내면 chat_id를 등록한다.
-# 2분 간격으로 확인 (연결은 가끔 일어나므로 충분).
+# GitHub Actions 권장 최소 간격 5분. */2는 throttle·skip 될 수 있어 불안정.
 on:
   schedule:
-    - cron: "*/2 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 concurrency:
