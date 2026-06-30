@@ -67,7 +67,10 @@ export default async function handler(req, res) {
     );
     if (!r.ok) continue;
     const json = await r.json();
-    const raw  = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? [];
+    const result = json?.chart?.result?.[0];
+    // 국내 코드는 .KS/.KQ 둘 다 응답하되 한쪽은 코드만 같은 펀드 → EQUITY만 채택
+    if (isKR && result?.meta?.instrumentType && result.meta.instrumentType !== "EQUITY") continue;
+    const raw  = result?.indicators?.quote?.[0]?.close ?? [];
     const valid = raw.filter((c) => c != null && c > 0);
     if (valid.length > 0) { closes = valid; break; }
   }

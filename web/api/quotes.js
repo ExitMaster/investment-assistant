@@ -24,6 +24,9 @@ async function fetchOne(sym) {
       const meta = result.meta || {};
       const price = meta.regularMarketPrice ?? null;
       if (!price) continue;
+      // 국내 코드는 .KS/.KQ 둘 다 시세를 주되 한쪽은 코드만 같은 펀드(MUTUALFUND) →
+      // EQUITY만 채택해 엉뚱한 종목 값을 거른다. (KOSPI는 .KS, KOSDAQ는 .KQ가 EQUITY)
+      if (isKR(sym) && meta.instrumentType && meta.instrumentType !== "EQUITY") continue;
       const prevClose =
         meta.chartPreviousClose ??
         meta.regularMarketPreviousClose ??

@@ -45,7 +45,10 @@ export default async function handler(req, res) {
     let result = null;
     for (const cand of candidates) {
       result = await fetchOne(cand);
-      if (result) break;
+      if (!result) continue;
+      // 국내 코드는 .KS/.KQ 둘 다 응답하되 한쪽은 코드만 같은 펀드 → EQUITY만 채택
+      if (isKR && result.meta?.instrumentType && result.meta.instrumentType !== "EQUITY") { result = null; continue; }
+      break;
     }
     if (!result) {
       res.status(404).json({ error: "no data for " + ticker });
