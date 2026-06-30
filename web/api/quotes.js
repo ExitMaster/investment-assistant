@@ -3,6 +3,24 @@
 
 const isKR = (sym) => /^\d{6}$/.test(sym);
 
+// 현재가 날짜(거래소 로컬)보다 이전인 마지막 유효 일봉 종가 = 전일 종가.
+// gmtoffset(초)으로 거래소 로컬 '일(day) 인덱스'를 계산해 비교한다. 장중 진행 봉이
+// 배열에 없는 거래소(한국 등)에서 '마지막-1' 방식이 전일 종가를 하루 더 밀어내는 문제 방지.
+function closePrevTradingDay(result, meta) {
+  const ts = result.timestamp || [];
+  const closes = result.indicators?.quote?.[0]?.close ?? [];
+  const tz = meta.gmtoffset ?? 0; // 거래소 UTC 오프셋(초)
+  const dayIdx = (epochSec) => Math.floor((epochSec + tz) / 86400);
+  const refDay = meta.regularMarketTime != null ? dayIdx(meta.regularMarketTime) : null;
+  for (let i = ts.length - 1; i >= 0; i--) {
+    const c = closes[i];
+    if (c == null || c <= 0) continue;
+    if (refDay != null && dayIdx(ts[i]) >= refDay) continue; // 현재가와 같은(또는 이후) 날 봉은 제외
+    return c;
+  }
+  return null;
+}
+
 async function fetchOne(sym) {
   const candidates = isKR(sym) ? [`${sym}.KS`, `${sym}.KQ`] : [sym];
   for (const cand of candidates) {
@@ -21,10 +39,11 @@ async function fetchOne(sym) {
       const meta = result.meta || {};
       const price = meta.regularMarketPrice ?? null;
       if (!price) continue;
-      const rawCloses = result.indicators?.quote?.[0]?.close ?? [];
-      const validCloses = rawCloses.filter((c) => c != null && c > 0);
-      const chartPrev = validCloses.length >= 2 ? validCloses[validCloses.length - 2] : null;
-      const prevClose = chartPrev ?? meta.regularMarketPreviousClose ?? meta.previousClose ?? null;
+      const prevClose =
+        closePrevTradingDay(result, meta) ??
+        meta.regularMarketPreviousClose ??
+        meta.previousClose ??
+        null;
       const name = meta.longName || meta.shortName || meta.symbol || sym;
       return { price, prevClose, name };
     } catch {}
