@@ -65,6 +65,22 @@ def _is_kr(ticker):
     return ticker.startswith('^KS') or ticker.startswith('^KQ')
 
 
+def _kr_session_closed(ticker, now_utc, grace_min=10):
+    """국내 티커가 정규장 시간(09:00-15:30 KST, 마감 후 grace분 유예) 밖이면 True.
+    국내장 마감 후에도 KST 자정 전까지는 신선도 가드를 통과해, 미국장 크론과 겹치는
+    시간에 '마감 종가'로 재평가되며 구간 유지 재알림이 장 외에 더 나가는 것을 막는다.
+    KST는 서머타임이 없어 고정 +9라 정확. 미국 티커는 항상 False(기존 동작 유지)."""
+    if not _is_kr(ticker):
+        return False
+    now = now_utc.astimezone(KST)
+    if now.weekday() >= 5:
+        return True
+    cur = now.hour * 60 + now.minute
+    open_m = _KR_OPEN[0] * 60 + _KR_OPEN[1]
+    close_m = _KR_CLOSE[0] * 60 + _KR_CLOSE[1]
+    return not (open_m <= cur <= close_m + grace_min)
+
+
 def _indicator_ctx(uid, ticker, df):
     """보조지표/개별DMI 알림용 시세 컨텍스트: (ath, prev_close).
     ath는 ath_state(인트라데이가 갱신해 둔 값)에서, prev_close는 일봉 직전 종가에서."""
@@ -229,6 +245,8 @@ def run_intraday():
             ticker = row["ticker"]
             name = row.get("name")
             ticker_actions = row.get("buy_actions")
+            if _kr_session_closed(ticker, datetime.now(timezone.utc)):
+                print(f"  {ticker}: 국내장 외 — skip"); continue
             price, tick_ts, prev_close = get_current_quote(ticker)
             if price is None:
                 print(f"  {ticker}: no price"); continue

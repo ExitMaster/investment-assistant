@@ -5,6 +5,10 @@ name: indicator-signals
 #  - 장 마감 후 확정:  EDT 16:05 ET = 20:05 UTC / EST = 21:05 UTC
 #  - 장 시작 +20분:    EDT 09:50 ET = 13:50 UTC / EST = 14:50 UTC
 #  - 장 마감 2시간 전:  EDT 14:00 ET = 18:00 UTC / EST = 19:00 UTC
+# 국내(KST, 서머타임 없어 단일 세트): 09:00-15:30 KST = 00:00-06:30 UTC
+#  - 장 마감 후 확정:  15:35 KST = 06:35 UTC
+#  - 장 시작 +20분:    09:20 KST = 00:20 UTC
+#  - 장 마감 2시간 전:  13:30 KST = 04:30 UTC
 # (개인별 알림 시각 정밀 매칭은 후속 반복에서 settings.indicator_alert_times 활용)
 on:
   schedule:
@@ -14,6 +18,9 @@ on:
     - cron: "50 14 * * 1-5"   # 시작+20분 (EST)
     - cron: "0 18 * * 1-5"    # 마감 2시간 전 (EDT)
     - cron: "0 19 * * 1-5"    # 마감 2시간 전 (EST)
+    - cron: "35 6 * * 1-5"    # 국내 마감 후 (15:35 KST)
+    - cron: "20 0 * * 1-5"    # 국내 시작+20분 (09:20 KST)
+    - cron: "30 4 * * 1-5"    # 국내 마감 2시간 전 (13:30 KST)
   workflow_dispatch: {}
 
 concurrency:
