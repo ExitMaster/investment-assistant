@@ -9,7 +9,7 @@ import json
 import time
 import urllib.parse
 import urllib.request
-from datetime import timezone
+from datetime import datetime, timezone
 import pandas as pd
 
 try:
@@ -61,6 +61,66 @@ def _yf(ticker):
     return ticker
 
 
+# ----- 네이버 금융: 국내 현재가/전일종가 (Yahoo는 지수 전일종가가 부정확) -----
+_NAVER_INDEX = {"KOSPI": "KOSPI", "KOSDAQ": "KOSDAQ", "^KS11": "KOSPI", "^KQ11": "KOSDAQ"}
+
+
+def _naver_target(ticker):
+    """네이버 대상이면 (kind, code) 반환. 국내 지수/6자리 종목만 대상, 그 외 None."""
+    if ticker in _NAVER_INDEX:
+        return "index", _NAVER_INDEX[ticker]
+    if _KR_CODE.match(ticker):
+        return "stock", ticker
+    return None
+
+
+def _naver_num(s):
+    if s is None or s == "":
+        return None
+    try:
+        return float(str(s).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _naver_quote(ticker):
+    """국내 시세를 네이버에서 (price, ts_utc, prev_close)로 반환. 실패 시 (None, None, None).
+    전일종가 = 현재가 - 등락폭(RISING/FALLING로 부호 결정). 웹 web/lib/naver.js와 동일 규칙."""
+    t = _naver_target(ticker)
+    if not t:
+        return None, None, None
+    kind, code = t
+    url = f"https://m.stock.naver.com/api/{kind}/{code}/basic"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15",
+        "Accept": "application/json",
+        "Referer": "https://m.stock.naver.com/",
+    }
+    for attempt in range(3):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                d = json.load(resp)
+            price = _naver_num(d.get("closePrice"))
+            if price is None:
+                return None, None, None
+            mag = abs(_naver_num(d.get("compareToPreviousClosePrice")) or 0.0)
+            direction = (d.get("compareToPreviousPrice") or {}).get("name")
+            prev_close = price - (-mag if direction == "FALLING" else mag)
+            ts = None
+            lt = d.get("localTradedAt")  # 예: "2026-06-30T18:58:00+09:00"
+            if lt:
+                try:
+                    ts = datetime.fromisoformat(lt).astimezone(timezone.utc)
+                except ValueError:
+                    ts = None
+            return price, ts, prev_close
+        except Exception as e:
+            print(f"[data] {ticker} naver attempt {attempt+1} failed: {e}")
+            time.sleep(2)
+    return None, None, None
+
+
 def get_daily_history(ticker, period="6y", interval="1d"):
     """
     일봉 OHLCV DataFrame 반환.
@@ -90,6 +150,10 @@ def get_current_price(ticker):
     실시간(또는 최근) 현재가 반환. 실패 시 None.
     장중에는 분 단위 최신가, 장 외에는 마지막 종가.
     """
+    if _naver_target(ticker):  # 국내 → 네이버 우선
+        price, _, _ = _naver_quote(ticker)
+        if price is not None:
+            return price
     sym = _yf(ticker)
     for attempt in range(3):
         try:
@@ -113,6 +177,10 @@ def get_current_price(ticker):
 def get_current_quote(ticker):
     """(현재가, 최신 틱 시각 UTC, 전일 종가) 반환. 시각/전일종가를 못 얻으면 None.
     휴장/장외 판별(신선도 가드)·전일대비 등락률 표시에 사용한다."""
+    if _naver_target(ticker):  # 국내 → 네이버 우선 (지수 전일종가가 Yahoo보다 정확)
+        price, ts, prev_close = _naver_quote(ticker)
+        if price is not None:
+            return price, ts, prev_close
     sym = _yf(ticker)
     for attempt in range(3):
         try:
