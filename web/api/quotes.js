@@ -3,29 +3,14 @@
 
 const isKR = (sym) => /^\d{6}$/.test(sym);
 
-// 현재가 날짜(거래소 로컬)보다 이전인 마지막 유효 일봉 종가 = 전일 종가.
-// gmtoffset(초)으로 거래소 로컬 '일(day) 인덱스'를 계산해 비교한다. 장중 진행 봉이
-// 배열에 없는 거래소(한국 등)에서 '마지막-1' 방식이 전일 종가를 하루 더 밀어내는 문제 방지.
-function closePrevTradingDay(result, meta) {
-  const ts = result.timestamp || [];
-  const closes = result.indicators?.quote?.[0]?.close ?? [];
-  const tz = meta.gmtoffset ?? 0; // 거래소 UTC 오프셋(초)
-  const dayIdx = (epochSec) => Math.floor((epochSec + tz) / 86400);
-  const refDay = meta.regularMarketTime != null ? dayIdx(meta.regularMarketTime) : null;
-  for (let i = ts.length - 1; i >= 0; i--) {
-    const c = closes[i];
-    if (c == null || c <= 0) continue;
-    if (refDay != null && dayIdx(ts[i]) >= refDay) continue; // 현재가와 같은(또는 이후) 날 봉은 제외
-    return c;
-  }
-  return null;
-}
-
 async function fetchOne(sym) {
   const candidates = isKR(sym) ? [`${sym}.KS`, `${sym}.KQ`] : [sym];
   for (const cand of candidates) {
     try {
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cand)}?interval=1d&range=5d`;
+      // range=1d 로 받으면 meta.chartPreviousClose 가 정확히 '직전 세션 종가'가 된다.
+      // (range=5d 의 일봉 close 배열은 일부 지수에서 null/오류 값이 섞여 전일대비가 깨졌음.
+      //  국내 티커는 regularMarketPreviousClose 메타도 None 이라 chartPreviousClose 가 유일하게 신뢰 가능.)
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cand)}?interval=1d&range=1d`;
       const r = await fetch(url, {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
@@ -40,7 +25,7 @@ async function fetchOne(sym) {
       const price = meta.regularMarketPrice ?? null;
       if (!price) continue;
       const prevClose =
-        closePrevTradingDay(result, meta) ??
+        meta.chartPreviousClose ??
         meta.regularMarketPreviousClose ??
         meta.previousClose ??
         null;
