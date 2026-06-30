@@ -22,8 +22,10 @@ export default async function handler(req, res) {
     return;
   }
 
-  const isKR = /^\d{6}$/.test(ticker);
-  const candidates = isKR ? [`${ticker}.KS`, `${ticker}.KQ`] : [ticker];
+  // 국내 지수 별칭(KOSPI/KOSDAQ) → yfinance 심볼. 6자리는 .KS/.KQ 탐침.
+  const base = ({ KOSPI: "^KS11", KOSDAQ: "^KQ11" })[ticker] || ticker;
+  const isKR = /^\d{6}$/.test(base);
+  const candidates = isKR ? [`${base}.KS`, `${base}.KQ`] : [base];
 
   const fetchOne = async (sym) => {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(

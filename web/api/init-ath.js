@@ -56,8 +56,10 @@ export default async function handler(req, res) {
 
   // 2. Yahoo Finance 히스토리 조회
   const range = RANGE_MAP[lookback] ?? "5y";
-  const isKR  = /^\d{6}$/.test(ticker);
-  const syms  = isKR ? [`${ticker}.KS`, `${ticker}.KQ`] : [ticker];
+  // 국내 지수 별칭(KOSPI/KOSDAQ) → yfinance 심볼. 6자리는 .KS/.KQ 탐침.
+  const base  = ({ KOSPI: "^KS11", KOSDAQ: "^KQ11" })[ticker] || ticker;
+  const isKR  = /^\d{6}$/.test(base);
+  const syms  = isKR ? [`${base}.KS`, `${base}.KQ`] : [base];
 
   let closes = null;
   for (const sym of syms) {

@@ -59,7 +59,9 @@ def resolve_action(level, st, ticker_actions):
 
 
 def _is_kr(ticker):
-    # 6자리 국내 종목코드 또는 국내 지수(^KS11·^KQ11 등) → KST 기준 처리
+    # 6자리 국내 종목코드 또는 국내 지수(KOSPI/KOSDAQ·^KS11·^KQ11 등) → KST 기준 처리
+    if ticker in ('KOSPI', 'KOSDAQ'):
+        return True
     if _re.match(r'^\d{6}', ticker.split('.')[0]):
         return True
     return ticker.startswith('^KS') or ticker.startswith('^KQ')

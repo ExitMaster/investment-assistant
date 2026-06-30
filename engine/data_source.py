@@ -21,6 +21,9 @@ except ImportError:
 _KR_CODE = re.compile(r'^\d{6}$')
 _kr_symbol_cache = {}
 
+# 국내 지수 별칭: 웹/네이버에서 쓰는 KOSPI/KOSDAQ ↔ yfinance 심볼 ^KS11/^KQ11
+_INDEX_ALIAS = {"KOSPI": "^KS11", "KOSDAQ": "^KQ11"}
+
 
 def _resolve_kr_symbol(code):
     """국내 6자리 코드 → yfinance 정식 심볼(.KS/.KQ). Yahoo 심볼검색에서 EQUITY를 고른다.
@@ -50,7 +53,9 @@ def _resolve_kr_symbol(code):
 
 
 def _yf(ticker):
-    """저장 티커를 yfinance 심볼로 변환. 국내 6자리 코드만 .KS/.KQ로 해석, 그 외는 그대로."""
+    """저장 티커를 yfinance 심볼로 변환. 국내 지수 별칭(KOSPI/KOSDAQ)·6자리 코드(.KS/.KQ) 해석."""
+    if ticker in _INDEX_ALIAS:
+        return _INDEX_ALIAS[ticker]
     if _KR_CODE.match(ticker):
         return _resolve_kr_symbol(ticker)
     return ticker
