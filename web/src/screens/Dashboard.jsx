@@ -469,7 +469,7 @@ export function MarqueeTape({ uid }) {
 
   const itemEls = visible.map((item) => {
     const q = prices[item.symbol];
-    const dayChg = q ? pct(q.price, q.prevClose) : null;
+    const dayChg = q ? (q.changePct ?? pct(q.price, q.prevClose)) : null;
     const chgClass = dayChg == null ? "neutral" : dayChg >= 0 ? "up" : "down";
     return (
       <div key={item.symbol} className="marquee-item">
@@ -729,7 +729,7 @@ function computeGauge(price, ath, prevClose, buyLevels, levelEvents) {
   return { c, lo, hi, marks, posOf, capPrev, capNext, nextMark };
 }
 
-function StatusGauge({ price, ath, prevClose, sym, buyLevels, resetPct }) {
+function StatusGauge({ price, ath, prevClose, changePct, sym, buyLevels, resetPct }) {
   // 직전 레벨 도달일: 일봉 백테스트로 가격 도달 이력을 구함 (펼침 시 1회, 캐시)
   const [levelEvents, setLevelEvents] = useState(null);
   useEffect(() => {
@@ -744,7 +744,7 @@ function StatusGauge({ price, ath, prevClose, sym, buyLevels, resetPct }) {
   const markerLeft = g.posOf(g.c);
   const zeroLeft = g.posOf(0);
   const fillColor = g.c < 0 ? "var(--down)" : "var(--up)";
-  const dayChg = prevClose && prevClose > 0 ? pct(price, prevClose) : null;
+  const dayChg = changePct != null ? changePct : (prevClose && prevClose > 0 ? pct(price, prevClose) : null);
   const arrowUp = dayChg == null ? true : dayChg >= 0;
   const arrowColor = arrowUp ? "var(--up)" : "var(--down)";
   const arrowChar = arrowUp ? "▲" : "▼";
@@ -830,9 +830,10 @@ function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDr
   const ath = athRow?.ath ?? null;
   const price = q?.price ?? null;
   const prevClose = q?.prevClose ?? null;
+  const changePct = q?.changePct ?? null;
   const krName = isKR(sym) ? krInfo?.name : null;
   const name = krName || (q?.name && q.name !== sym && q.name !== displaySym(sym) ? q.name : null);
-  const dayChg = pct(price, prevClose);
+  const dayChg = changePct ?? pct(price, prevClose);
   const athChg = pct(price, ath);
 
   const priceClass = dayChg == null ? "neutral" : dayChg >= 0 ? "up" : "down";
@@ -901,7 +902,7 @@ function TickerRow({ sym, quotes, athMap, onRemove, editMode, dragRowProps, isDr
 
       {showGauge && expanded && !editMode && (
         <div className="gauge-row">
-          <StatusGauge price={price} ath={ath} prevClose={prevClose} sym={sym} buyLevels={buyLevels} resetPct={resetPct} />
+          <StatusGauge price={price} ath={ath} prevClose={prevClose} changePct={changePct} sym={sym} buyLevels={buyLevels} resetPct={resetPct} />
         </div>
       )}
     </>

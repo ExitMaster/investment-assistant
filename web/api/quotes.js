@@ -1,42 +1,32 @@
 // Vercel Serverless: /api/quotes?symbols=QQQ,SPY,^GSPC
-// 배치 시세 조회 — 여러 심볼을 한 번에 요청하여 API 호출 최소화
+// 배치 시세 조회 — 여러 심볼을 한 번에 요청하여 API 호출 최소화.
+// 국내 지수/종목(KOSPI·KOSDAQ·^KS11·^KQ11·6자리코드)은 네이버(공식 등락률 직접 제공),
+// 그 외(미국·환율 등)는 Yahoo. 반환: { price, prevClose, name[, changePct] }
 
-const isKR = (sym) => /^\d{6}$/.test(sym);
+import { naverKind, naverQuote } from "../lib/naver.js";
 
 async function fetchOne(sym) {
-  const candidates = isKR(sym) ? [`${sym}.KS`, `${sym}.KQ`] : [sym];
-  for (const cand of candidates) {
-    try {
-      // range=1d 로 받으면 meta.chartPreviousClose 가 정확히 '직전 세션 종가'가 된다.
-      // (range=5d 의 일봉 close 배열은 일부 지수에서 null/오류 값이 섞여 전일대비가 깨졌음.
-      //  국내 티커는 regularMarketPreviousClose 메타도 None 이라 chartPreviousClose 가 유일하게 신뢰 가능.)
-      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(cand)}?interval=1d&range=1d`;
-      const r = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-          Accept: "application/json",
-        },
-      });
-      if (!r.ok) continue;
-      const json = await r.json();
-      const result = json?.chart?.result?.[0];
-      if (!result) continue;
-      const meta = result.meta || {};
-      const price = meta.regularMarketPrice ?? null;
-      if (!price) continue;
-      // 국내 코드는 .KS/.KQ 둘 다 시세를 주되 한쪽은 코드만 같은 펀드(MUTUALFUND) →
-      // EQUITY만 채택해 엉뚱한 종목 값을 거른다. (KOSPI는 .KS, KOSDAQ는 .KQ가 EQUITY)
-      if (isKR(sym) && meta.instrumentType && meta.instrumentType !== "EQUITY") continue;
-      const prevClose =
-        meta.chartPreviousClose ??
-        meta.regularMarketPreviousClose ??
-        meta.previousClose ??
-        null;
-      const name = meta.longName || meta.shortName || meta.symbol || sym;
-      return { price, prevClose, name };
-    } catch {}
+  if (naverKind(sym)) return naverQuote(sym);   // 국내 → 네이버
+  try {                                          // 그 외 → Yahoo
+    // range=1d 의 chartPreviousClose 가 정확히 직전 세션 종가.
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=1d`;
+    const r = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        Accept: "application/json",
+      },
+    });
+    if (!r.ok) return null;
+    const json = await r.json();
+    const meta = json?.chart?.result?.[0]?.meta;
+    const price = meta?.regularMarketPrice ?? null;
+    if (!price) return null;
+    const prevClose = meta.chartPreviousClose ?? meta.regularMarketPreviousClose ?? meta.previousClose ?? null;
+    const name = meta.longName || meta.shortName || meta.symbol || sym;
+    return { price, prevClose, name };
+  } catch {
+    return null;
   }
-  return null;
 }
 
 export default async function handler(req, res) {
