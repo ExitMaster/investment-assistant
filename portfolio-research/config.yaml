@@ -22,6 +22,16 @@ samples:
     exclude: [GOLD, QQQ]
     label: STRUCTURAL_PROXY_TEST
     primary: false
+  official_index:
+    dataset: index                # official index / published benchmark only
+    start: '1988-02'              # first full month of the S&P 500 TR index
+    # QQQ:  no public Nasdaq-100 TOTAL-return history is retrievable; the
+    #       price-return series must never enter a simulation.
+    # SCHD: no public Dow Jones U.S. Dividend 100 history is retrievable.
+    # SPMO: no public S&P 500 Momentum index history is retrievable.
+    exclude: [QQQ, SCHD, SPMO]
+    label: OFFICIAL_INDEX_EXTENDED
+    primary: false
   live:
     dataset: live                 # actual ETF total returns only
     start: '2015-11'              # first full month of SPMO trading

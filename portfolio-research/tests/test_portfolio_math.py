@@ -281,3 +281,26 @@ def test_zero_band_rebalances_every_month():
     res = simulate(R, np.full(3, 1 / 3), rule="R3", band=0.0)
     # month 0 starts exactly on target, so there is nothing to correct yet
     assert (res.rebalance_events == H - 1).all()
+
+
+# --------------------------------------------------------------------------
+# systematic no-look-ahead check across every rule
+# --------------------------------------------------------------------------
+@pytest.mark.parametrize("rule", ["R0", "R1", "R2", "R3"])
+@pytest.mark.parametrize("timing", ["begin", "end"])
+def test_no_state_before_month_t_depends_on_month_t(rule, timing):
+    """Perturbing one month's returns must leave every earlier month-end value
+    bit-for-bit identical, whatever the rebalancing rule."""
+    rng = np.random.default_rng(11)
+    H, T = 36, 18
+    R = rng.normal(0.006, 0.04, size=(4, H, 3))
+    w = np.array([0.5, 0.3, 0.2])
+    c = np.ones((4, H))
+    kw = dict(rule=rule, contributions=c, initial=1.0, band=0.15,
+              contribution_timing=timing)
+    base = simulate(R, w, **kw)
+    bumped = R.copy()
+    bumped[:, T, :] += 0.25
+    after = simulate(bumped, w, **kw)
+    assert np.array_equal(base.total[:, :T + 1], after.total[:, :T + 1])
+    assert not np.allclose(base.total[:, T + 1], after.total[:, T + 1])

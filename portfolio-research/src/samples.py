@@ -53,6 +53,11 @@ def build_sample(name: str, cfg: dict) -> Sample:
     missing = [e for e in exposures if e not in df.columns]
     if missing:
         raise KeyError(f"sample {name}: dataset lacks {missing}")
+    # Price-return twins live in the same panels for auditing.  They carry a
+    # suffix precisely so a simulation can never pick one up by accident.
+    leaked = [e for e in exposures if e.endswith("_PRICE_ONLY")]
+    if leaked:
+        raise ValueError(f"sample {name} would mix price returns in: {leaked}")
     df = df[exposures]
 
     start = pd.Period(spec["start"], freq="M")

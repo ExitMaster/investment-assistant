@@ -204,3 +204,55 @@ Each item on the required anomaly list, checked against the run:
   Nasdaq-100 total-return index history is publicly retrievable; four of six
   long series are proxies; the momentum result is cost-sensitive; 30-year
   statistics rest on one independent window.
+
+---
+
+## 2026-08-14 — Loop 5: closing three gaps found in a requirements re-audit
+
+Re-read the requirements against the delivered artefacts and found three real
+gaps.  None was a wrong result; all three were missing coverage.
+
+### Gap 1 — no OFFICIAL_INDEX_EXTENDED *results*
+The three data classes were kept separate in `data/processed`, but only
+`live` and `structural` were carried through the combination, rolling,
+contribution and rebalancing analyses.  The official-index layer existed purely
+as a dividend-inclusion audit.
+
+Fixed by adding an `official_index` sample: `^SP500TR` + LBMA gold + the
+Treasury bill, 1988-02 → 2026-07 (462 months, 7 combinations, 403/343/283/223/103
+rolling starts at 5/10/15/20/30 years).  It cannot include QQQ, SCHD or SPMO —
+that is the same unavailability recorded in loop 1, not a new limitation.  The
+LBMA gold and TB3MS legs were re-added to the `index` panel with their own
+manifest rows classified `OFFICIAL_INDEX`, and a test asserts the layer contains
+no `STRUCTURAL_PROXY` series.
+
+**This produced a genuinely new finding rather than a formality.**  Over
+1988-2026 the S&P 500 and gold drifted within 0.8 pp/yr of one another, and
+rebalancing SPY+GOLD is strongly positive there (R1 +4.81%, improving 99.6% of
+windows; ±30% band +5.98%) — while the same pair over 1971-2026, where gold's
+drift was far below equity's, showed no such gain, and SPY+CASH and GOLD+CASH
+stay negative in *both* samples.  The sign of the rebalancing effect tracks the
+drift gap, on data sharing no series with the primary layer.  §1.6's mechanism
+claim is now confirmed out of sample rather than merely asserted.
+
+### Gap 2 — nothing enforced "never mix price and total-return series"
+Price-return twins live in the same panel as the total-return series for the
+dividend audit.  They were safe only by naming convention.  Added a hard guard
+in `samples.build_sample` (raises on any `_PRICE_ONLY` column) plus two tests:
+one driving the guard, and one that reads `data_manifest.csv` and asserts every
+column of every analysis sample is classified `TOTAL_RETURN` — with the two
+principled exceptions, gold (no income) and cash (yield-derived).
+
+### Gap 3 — look-ahead was tested for one rule only
+The previous leakage test covered R2 with a single perturbation.  Replaced with
+a parameterised test over **all four rules × both contribution timings**:
+perturbing month *t*'s returns must leave every month-end value up to *t*
+bit-for-bit identical, and must change month *t*'s value.  8 new assertions.
+
+### State after loop 5
+* **81 tests, all passing** (70 → 81).
+* Four analysis samples: `structural` (primary), `structural_long`,
+  `official_index`, `live`.
+* Structural results are unchanged by this loop — verified by re-checking the
+  cited figures (QQQ+SCHD+SPMO 20y median 12.77%, p10 9.56%, drawdown −47.4%,
+  terminal wealth 3.103) and the screening survivors, which are identical.

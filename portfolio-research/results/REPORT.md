@@ -3,6 +3,7 @@
 **Primary evidence**: `structural` sample, 1971-09 → 2026-06 (658 months), all six
 exposures, equal weights, annual rebalancing, monthly rolling start dates.
 **Validation**: `live` sample, 2015-11 → 2026-07 (129 months), actual ETFs.
+**Official-index cross-check**: `official_index`, 1988-02 → 2026-07 (462 months), SPY/GOLD/CASH only.
 **Century check**: `structural_long`, 1927-07 → 2026-06 (1188 months), four exposures.
 
 Everything below is reproduced by `python run_research.py`; every number cited
@@ -224,7 +225,43 @@ Live full-period results (`results/tables/live_period_validation.csv`):
 
 No weight, rule or exposure was chosen using this period.
 
-### 1.11 Timing, fee and tax sensitivities change nothing
+### 1.11 Official-index cross-check, and an independent confirmation of §1.6
+
+A third layer uses **only official index / published-benchmark data and no
+proxies at all**: the S&P 500 Total Return index, the LBMA gold price and the
+Treasury bill, 1988-02 → 2026-07 (462 months, 7 combinations).  It cannot
+include QQQ, SCHD or SPMO, because no public total-return history of the
+Nasdaq-100, the Dow Jones U.S. Dividend 100 or the S&P 500 Momentum index is
+retrievable.
+
+Rolling 20-year windows, `OFFICIAL_INDEX_EXTENDED` layer:
+
+| | median CAGR | p10 CAGR | median max DD | TW per real unit |
+|---|---|---|---|---|
+| SPY+GOLD | 8.68% | **7.62%** | −25.5% | 2.04 |
+| SPY | 8.59% | 6.42% | −51.0% | 1.92 |
+| GOLD | 7.75% | 5.13% | −41.6% | 1.90 |
+| SPY+GOLD+CASH | 6.89% | 6.01% | −17.0% | 1.60 |
+| SPY+CASH | 6.11% | 4.49% | −26.4% | 1.40 |
+| CASH | 2.11% | 1.30% | 0.0% | 0.93 |
+
+The gold result of §1.8 reproduces on data that shares no series with the
+structural layer: adding gold to equity lifts the 10th percentile (6.42% →
+7.62%) and halves the drawdown, at a small cost in median return.
+
+More importantly, this layer **independently confirms the mechanism claimed in
+§1.6**.  Over 1988-2026 the S&P 500 and gold had unusually *similar* drifts
+(8.59% vs 7.75% median 20-year CAGR), and exactly as the drift explanation
+predicts, rebalancing SPY+GOLD is strongly positive here — R1 contribution-only
+**+4.81%** improving **99.6%** of windows, a ±30% band **+5.98%** — whereas the
+same pair over 1971-2026, where gold's drift was far below equity's, showed no
+such gain.  SPY+CASH and GOLD+CASH, whose drifts remain far apart in this
+period too, stay negative (−3.4% and −4.9%).
+
+The sign of the rebalancing effect tracks the drift gap, not the sample.  That
+is a mechanism, not a curve fit.
+
+### 1.12 Timing, fee and tax sensitivities change nothing
 
 * Contributing at month-end instead of month-start: 0.989× median terminal
   wealth, uniformly across every portfolio tested — a level effect, not a
@@ -296,7 +333,9 @@ are ETF histories and none are described as such anywhere in this repository.
 
 **Limited common history.**  All six exposures coexist as real instruments for
 only 129 months.  The 55-year primary window exists only because of the
-proxies.
+proxies.  The proxy-free `official_index` layer reaches back to 1988 but can
+only carry three of the six exposures, so it corroborates the gold, cash and
+rebalancing findings and says nothing about QQQ, SCHD or SPMO.
 
 **Overlapping windows are not independent observations.**  658 months contain
 **5** independent 10-year windows, **2** independent 20-year windows and
@@ -396,10 +435,14 @@ For the candidate all-equity portfolios, **79%–94%** at 20 years and **more th
 decisions.  Under a ±20% band, contributions do **77%** of all weight correction.
 
 **9. Is there credible evidence of a Shannon-style rebalancing premium?**
-Conditionally.  Yes for assets of similar drift (+1.5% to +2.0% median terminal
-wealth over 20 years, 80%+ of windows).  No in general: across all 57
-multi-asset combinations the median effect is negative and the worst window is
-0.44×.  A universal rebalancing premium is **not** supported.
+Conditionally, and the condition is the **drift gap**, not the asset class.  Yes
+for assets of similar drift: +1.5% to +2.0% median terminal wealth over 20 years
+for all-equity mixes (80%+ of windows), and **+4.8%** for SPY+GOLD on the
+official-index layer where the two drifted within 0.8pp/yr of each other (99.6%
+of windows).  No in general: across all 57 multi-asset combinations on the
+primary sample the median effect is negative and the worst window is 0.44×.
+A universal rebalancing premium is **not** supported; a drift-conditional one
+is, and it reproduces out of sample.
 
 **10. Are favourable allocations broad plateaus or narrow fitted optima?**
 Broad plateaus.  The grid maximum's worst neighbour is 2.4% below it, and a

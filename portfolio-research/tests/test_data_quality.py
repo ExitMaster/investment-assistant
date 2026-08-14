@@ -262,3 +262,44 @@ def test_drag_reduces_returns_by_the_stated_amount(cfg):
                    drag_bps={"SPMO": 100.0})
     ratio = (1 + cagr(drag.total)[0]) / (1 + cagr(base.total)[0])
     assert ratio == pytest.approx(0.99, abs=1e-6)
+
+
+# --------------------------------------------------------------------------
+# no price-return series may ever reach a simulation
+# --------------------------------------------------------------------------
+def test_no_sample_uses_a_price_return_equity_series(cfg):
+    """Requirement 1: never mix price and total-return series.
+
+    Every column an analysis sample exposes must be classified TOTAL_RETURN in
+    the manifest -- except gold, which has no income so its price return *is*
+    its total return, and cash, which is derived from a Treasury yield.
+    """
+    manifest = pd.read_csv(fetch.RAW.parent / "data_manifest.csv")
+    allowed = {"GOLD": {"PRICE_RETURN", "TOTAL_RETURN"},
+               "CASH": {"YIELD_DERIVED", "TOTAL_RETURN"}}
+    for name, s in build_all_samples(cfg).items():
+        dataset = cfg["samples"][name]["dataset"]
+        for exposure in s.exposures:
+            assert not exposure.endswith("_PRICE_ONLY")
+            row = manifest[(manifest.exposure == exposure)
+                           & (manifest.dataset == dataset)].iloc[0]
+            assert row.return_type in allowed.get(exposure, {"TOTAL_RETURN"}), (
+                f"{name}: {exposure} is {row.return_type}")
+
+
+def test_price_only_columns_are_rejected_by_the_sample_builder(cfg):
+    from src.samples import build_sample
+    broken = {**cfg, "exposures": ["SPY_PRICE_ONLY"],
+              "samples": {"x": {"dataset": "index", "start": "2000-01"}}}
+    with pytest.raises(ValueError, match="price returns"):
+        build_sample("x", broken)
+
+
+def test_official_index_layer_holds_no_proxy_series(cfg):
+    """The OFFICIAL_INDEX_EXTENDED layer must contain nothing proxied."""
+    manifest = pd.read_csv(fetch.RAW.parent / "data_manifest.csv")
+    s = build_all_samples(cfg)["official_index"]
+    for exposure in s.exposures:
+        row = manifest[(manifest.exposure == exposure)
+                       & (manifest.dataset == "index")].iloc[0]
+        assert row.data_class == "OFFICIAL_INDEX", f"{exposure}: {row.data_class}"

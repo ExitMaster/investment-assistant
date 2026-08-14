@@ -262,6 +262,30 @@ def build_all(refresh: bool = False) -> dict[str, pd.DataFrame]:
         "never enters a portfolio simulation.",
     ))
 
+    # The official-index layer needs a gold and a cash leg to be analysable as
+    # a panel.  Neither is an "index", but both are the authoritative published
+    # benchmark for their exposure, so the layer stays free of proxy series.
+    panels["index"]["GOLD"] = gold_tr
+    specs.append(SeriesSpec(
+        "GOLD", "index", "London Bullion Market Association",
+        fetch.LBMA_GOLD_PM, "LBMA Gold Price PM, USD/troy oz",
+        "PRICE_RETURN", "OFFICIAL_INDEX",
+        "daily PM auction price -> last obs. of each month -> pct change",
+        "The published benchmark price rather than an index.  Gold pays no "
+        "income, so price return is total return before storage cost.",
+    ))
+    panels["index"]["CASH"] = cash_live
+    specs.append(SeriesSpec(
+        "CASH", "index", "FRED (Board of Governors / U.S. Treasury)",
+        FRED_URL.format("TB3MS"),
+        "TB3MS - 3-Month Treasury Bill Secondary Market Rate, Discount Basis",
+        "YIELD_DERIVED", "OFFICIAL_INDEX",
+        "bank-discount quote -> 91-day bill price -> geometric monthly holding "
+        "return; lagged one month so no month uses its own rate",
+        "Official Treasury rate data; the holding-return conversion is ours "
+        "and is validated against the Fama/French bill return.",
+    ))
+
     # ---------------- inflation -------------------------------------------
     cpi = fetch.fred("CPIAUCNS", refresh=refresh)
     cpi.index = pd.PeriodIndex(cpi.index, freq="M")
