@@ -66,7 +66,8 @@ class SimResult:
     def contrib_share_of_rebalancing(self) -> np.ndarray:
         """Share of all weight correction that deposits alone achieved."""
         denom = self.gap_closed_by_contrib + self.gap_closed_by_sales
-        return np.where(denom > 0, self.gap_closed_by_contrib / denom, np.nan)
+        return np.divide(self.gap_closed_by_contrib, denom,
+                         out=np.full_like(denom, np.nan), where=denom > 0)
 
 
 # --------------------------------------------------------------------------

@@ -61,7 +61,9 @@ rebalancing:
 # ---------------------------------------------------------------------------
 weight_search:
   step: 0.10                      # coarse 10 percentage-point grid
-  min_weight: 0.0
+  min_weight: 0.10                # every asset in the set carries at least one
+                                  # grid step; a 0% weight would simply be a
+                                  # different combination, already screened
   max_assets: 4                   # keep the surviving candidate space small
 
 screening:
@@ -82,9 +84,14 @@ costs:
     SPMO: 13.0
     GOLD: 40.0                    # physical-gold ETF style cost
     CASH: 0.0
-  proxy_implementation_drag_bps:  # extra annual drag applied to proxy series
-    SPMO: 30.0                    # momentum turnover is not free
-    SCHD: 10.0
+  # Extra annual drag applied to the STRUCTURAL proxy series, which are quoted
+  # gross of every cost.  These are judgement calls, not measurements -- the
+  # authoritative treatment is results/tables/implementation_cost_breakeven.csv,
+  # which reports how large the drag would have to be to flip each conclusion.
+  proxy_implementation_drag_bps:
+    SPMO: 100.0                   # monthly reconstitution; the real ETF turns
+                                  # over far less, so this is deliberately harsh
+    SCHD: 10.0                    # annual June reconstitution
     QQQ: 10.0
     SPY: 5.0
     GOLD: 0.0

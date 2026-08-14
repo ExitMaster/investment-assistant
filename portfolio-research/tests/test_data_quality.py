@@ -243,3 +243,22 @@ def test_manifest_covers_every_series_used(cfg):
             assert row.return_type in {"TOTAL_RETURN", "PRICE_RETURN", "YIELD_DERIVED"}
             assert row.data_class in {"LIVE_ETF", "OFFICIAL_INDEX",
                                       "STRUCTURAL_PROXY", "BENCHMARK_PRICE"}
+
+
+# --------------------------------------------------------------------------
+# cost drag behaves like a cost
+# --------------------------------------------------------------------------
+def test_drag_reduces_returns_by_the_stated_amount(cfg):
+    """A 100 bp annual drag must multiply the annual growth factor by 0.99."""
+    import numpy as np
+    from src.analysis import Engine
+    from src.metrics import cagr
+    from src.samples import build_sample
+
+    eng = Engine(build_sample("structural", cfg), cfg)
+    H = eng.sample.n_months
+    base = eng.run(("SPMO",), np.array([1.0]), "R2", H, with_contributions=False)
+    drag = eng.run(("SPMO",), np.array([1.0]), "R2", H, with_contributions=False,
+                   drag_bps={"SPMO": 100.0})
+    ratio = (1 + cagr(drag.total)[0]) / (1 + cagr(base.total)[0])
+    assert ratio == pytest.approx(0.99, abs=1e-6)

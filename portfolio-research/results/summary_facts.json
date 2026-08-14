@@ -1,0 +1,58 @@
+{
+  "generated": "2026-08-14 22:02:28",
+  "samples": {
+    "structural": {
+      "start": "1971-09",
+      "end": "2026-06",
+      "months": 658,
+      "exposures": [
+        "SPY",
+        "QQQ",
+        "SCHD",
+        "SPMO",
+        "GOLD",
+        "CASH"
+      ],
+      "label": "STRUCTURAL_PROXY_TEST"
+    },
+    "structural_long": {
+      "start": "1927-07",
+      "end": "2026-06",
+      "months": 1188,
+      "exposures": [
+        "SPY",
+        "SCHD",
+        "SPMO",
+        "CASH"
+      ],
+      "label": "STRUCTURAL_PROXY_TEST"
+    },
+    "live": {
+      "start": "2015-11",
+      "end": "2026-07",
+      "months": 129,
+      "exposures": [
+        "SPY",
+        "QQQ",
+        "SCHD",
+        "SPMO",
+        "GOLD",
+        "CASH"
+      ],
+      "label": "LIVE_ONLY"
+    }
+  },
+  "n_combinations_primary": 63,
+  "survivors": [
+    "QQQ+SPMO",
+    "QQQ+SCHD+SPMO",
+    "SPY+QQQ+SCHD+SPMO+GOLD",
+    "QQQ+SCHD+SPMO+GOLD"
+  ],
+  "weight_grid_sets": [
+    "QQQ+SPMO",
+    "QQQ+SCHD+SPMO",
+    "QQQ+SCHD+SPMO+GOLD"
+  ],
+  "live_vs_structural_spearman": 0.8085637480798772
+}

@@ -79,3 +79,128 @@ fitting portfolio results.  No portfolio outcome was consulted.
 
 ### Tests at end of loop 1
 56 passed, 0 failed.
+
+---
+
+## 2026-08-14 — Loop 2: simulator, metrics and first full run
+
+Built the vectorised simulator (`src/portfolio.py`).  Every rolling window of a
+horizon is stepped simultaneously, so a 63-combination × 5-horizon sweep is
+seconds rather than hours.  Contribution allocation under R1/R3 is a
+**water-fill**: add cash so that `v'_k = max(v_k, λ·w_k)` for the λ that spends
+exactly the deposit.  A brute-force test (3000 random no-sell allocations)
+confirms this minimises the weight gap.
+
+**Design choices recorded before results were seen**
+* Phase-1 base rule = R2 (annual), equal weights.
+* R2 deposits at target weights; R3 deposits by water-fill.  So R2-vs-R0
+  isolates the annual restore and R3-vs-R1 isolates band-triggered selling.
+* Screening = Pareto frontier on (median, p10) rolling 10-year CAGR, capped at
+  20 combinations.
+* Weight grid: 10-point simplex, every asset ≥ 10% (a 0% weight is simply a
+  different combination, already screened).
+
+First full run completed.  56 tests passing.
+
+### Defects found by inspecting the first run
+1. **`pct_windows_beating_QQQ` was 0.0 for QQQ itself** (a benchmark cannot
+   strictly beat itself).  Now `NaN`.
+2. **Divide-by-zero warnings** in `contrib_share_of_rebalancing` when a window
+   had no weight correction at all.  Replaced `np.where` (which evaluates both
+   branches) with a masked `np.divide`.
+3. **Chart subtitles overflowed** the figure; now wrapped.  The combination
+   focus list did not include the screening survivors; now it does.
+
+---
+
+## 2026-08-14 — Loop 3: the two threats to the conclusion
+
+Reading the first full run, two results were strong enough to be suspicious,
+and both needed dedicated analyses rather than a caveat sentence.
+
+### Threat 1 — the momentum proxy is quoted gross of costs
+`BIG HiPRIOR` reconstitutes **monthly**.  Its 13.64% full-sample CAGR versus
+SPY's 11.26% cannot be taken at face value, and the initial config drag of
+30 bp was indefensibly low for such a portfolio.
+
+Rather than guess a fee, added `analysis.cost_breakeven`: re-run every candidate
+charging an annual drag to the SPMO exposure only, across 0–500 bp, at three
+horizons (`results/tables/implementation_cost_breakeven.csv`).  Result: SPMO
+alone loses to SPY at ≈ 146 bp, to SCHD at ≈ 102 bp and to QQQ at ≈ 77 bp
+(20-year medians); the blended QQQ+SCHD+SPMO survives to ≈ 268 bp.  The config
+drag was also raised 30 → 100 bp, and the config now says explicitly that the
+break-even table, not the drag parameter, is the authoritative treatment.
+
+**This is a methodological correction, not a result-driven one** — it was made
+because the cost assumption was wrong, and it makes the headline finding weaker,
+not stronger.
+
+### Threat 2 — is gold's benefit one episode?
+Added `analysis.subperiod_stability` (five disjoint eras plus a
+gold-rally-excluded window) and a gold start-date sensitivity (1971-09 /
+1975-01 / 1980-01).
+
+Finding, now in the report: gold's **return** contribution *is* one episode —
+its own CAGR falls 8.74% → 6.15% → 4.53% as the start moves 1971 → 1975 → 1980 —
+but its **drawdown and volatility** contribution is present in all five eras and
+is nearly identical whichever start date is used.  The two halves of the gold
+question have opposite answers, and the report now says so.
+
+### Other additions in this loop
+* Live-vs-structural rank agreement across all 63 combinations
+  (Spearman 0.809), so the report can state where the proxy layer and the ETF
+  layer disagree instead of asserting they agree.
+* `scipy` is not installed in this environment; Spearman is computed as Pearson
+  on the ranks rather than adding a dependency.
+* Golden-value regression tests (`tests/test_history_is_stable.py`) pin nine
+  historically checkable months — Black Monday, the 1980 gold spike, April 2000,
+  the Volcker rate peak, March 2020 — so a future refetch that silently rewrites
+  history fails the suite instead of rewriting the study.
+
+### Test corrections in this loop (both were wrong tests, not wrong code)
+* `test_zero_band_rebalances_every_month` expected H events; the correct answer
+  is H−1, because month 0 starts exactly on target.
+* `test_drag_reduces_returns_by_the_stated_amount` asserted an additive 100 bp
+  gap; a multiplicative drag makes the correct invariant
+  `(1+cagr_drag)/(1+cagr_base) = 0.99`.
+
+---
+
+## 2026-08-14 — Loop 4: plausibility sweep (SC-19)
+
+Each item on the required anomaly list, checked against the run:
+
+| check | result |
+|---|---|
+| Cash with equity-like returns | 4.39% nominal / 0.46% real over 1971-2026, vol 1.0%. Enforced by tests. |
+| SCHD materially off its benchmark | proxy vs ETF over 176 months: corr 0.940, CAGR 13.01% vs 12.93%. Drawdown is 6pp deeper — explained by the missing quality screen, disclosed. |
+| TR and PR identical over decades | tested per ETF; SPY TR−PR = 1.9%/yr, SCHD 3.3%/yr, QQQ 0.7%/yr. GLD's TR and PR are identical **as they must be** (no distributions), and that is asserted rather than assumed. |
+| Impossible drawdowns | all in (−100%, 0]; deepest is QQQ −81.0%, which matches the Nasdaq-100's actual dot-com decline. |
+| Different rebalancing rules giving identical results | found: R1 and R3 ±30% are identical for 18 of 114 combination-horizons. **Not a bug** — a wide band on a heavily-contributed portfolio is never breached, so R3 degenerates to R1. Now an explicit invariant test. |
+| Rolling-window counts vs history | 658 months → 599 / 539 / 479 / 419 / 299 windows at 5/10/15/20/30 years. Verified. |
+| Retrieval date changing old history | nine pinned golden values + pinned series start months. |
+| Gold dominating on one recent episode | it does not dominate at all (10-year median 4.41%, p10 −2.95%); the sub-period analysis separates its return contribution (one episode) from its risk contribution (all eras). |
+| QQQ analysis missing the dot-com collapse | asserted by test: the QQQ exposure must lose > 60% between 2000-03 and 2002-10. It loses 81.0%. |
+| CPI gaps | one month (2025-10) never published by BLS; interpolated and disclosed; a test refuses any other filled month. |
+
+### Also settled in this loop
+* **Non-overlapping windows are thin and the report must lead with it.**  658
+  months contain 5 / 2 / 1 independent 10 / 20 / 30-year windows.  Every rolling
+  table carries `n_independent_windows`, and §3 of the report states that the
+  30-year "distribution" is one history.
+* **The aggregate rebalancing result is negative.**  Across all 57 multi-asset
+  combinations the median 20-year TW ratio is below 1.0 for every rule.  Split
+  by mix type, the sign flips: +1.5% to +2.0% for all-equity mixes, −2.8% to
+  −5.1% for mixes holding cash or gold.  Reported as a conditional effect, not a
+  premium.
+* **Drawdown reduction is not a rebalancing effect.**  For all-equity mixes,
+  rebalancing changes median drawdown by ±0.3pp.  The 4-5pp improvement seen in
+  the aggregate comes from *owning* gold or cash, not from rebalancing into it.
+
+### Final state
+* 70 automated tests, all passing.
+* 21 result tables, 12 charts, full manifest.
+* Unresolved caveats, all disclosed in `REPORT.md` §3: no official SCHD/SPMO/
+  Nasdaq-100 total-return index history is publicly retrievable; four of six
+  long series are proxies; the momentum result is cost-sensitive; 30-year
+  statistics rest on one independent window.

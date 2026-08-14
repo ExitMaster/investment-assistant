@@ -245,3 +245,39 @@ def test_large_contributions_remove_the_need_to_sell():
                    contributions=np.ones((1, H)), initial=1.0)
     assert res.sold[0] == 0.0
     assert res.contrib_share_of_rebalancing[0] == pytest.approx(1.0)
+
+
+# --------------------------------------------------------------------------
+# rule-degeneracy invariants (SC-19: "different rules give identical results")
+# --------------------------------------------------------------------------
+def test_wide_band_degenerates_to_contribution_only():
+    """A band that is never breached must make R3 numerically equal to R1 --
+    identical results are only acceptable when the mechanism explains them."""
+    rng = np.random.default_rng(7)
+    H = 120
+    R = rng.normal(0.006, 0.03, size=(30, H, 2))
+    w = np.array([0.5, 0.5])
+    c = np.ones((30, H))
+    wide = simulate(R, w, rule="R3", band=5.0, contributions=c, initial=1.0)
+    r1 = simulate(R, w, rule="R1", contributions=c, initial=1.0)
+    assert wide.rebalance_events.sum() == 0
+    assert np.allclose(wide.terminal_wealth, r1.terminal_wealth)
+
+
+def test_single_asset_rules_are_all_identical():
+    rng = np.random.default_rng(8)
+    R = rng.normal(0.006, 0.04, size=(5, 60, 1))
+    c = np.ones((5, 60))
+    tws = [simulate(R, np.array([1.0]), rule=r, contributions=c,
+                    initial=1.0).terminal_wealth for r in ("R0", "R1", "R2", "R3")]
+    for t in tws[1:]:
+        assert np.allclose(t, tws[0])
+
+
+def test_zero_band_rebalances_every_month():
+    rng = np.random.default_rng(9)
+    H = 24
+    R = rng.normal(0.005, 0.03, size=(3, H, 3))
+    res = simulate(R, np.full(3, 1 / 3), rule="R3", band=0.0)
+    # month 0 starts exactly on target, so there is nothing to correct yet
+    assert (res.rebalance_events == H - 1).all()
