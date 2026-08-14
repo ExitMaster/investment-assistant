@@ -1,0 +1,101 @@
+# Portfolio research configuration.
+# Every number that drives a research decision lives here, not in code.
+
+exposures: [SPY, QQQ, SCHD, SPMO, GOLD, CASH]
+
+# ---------------------------------------------------------------------------
+# Sample definitions.  A "sample" is (dataset, date range).  Combination
+# screening is always run on the common window of the six exposures inside the
+# dataset, so cross-combination comparisons are apples-to-apples.
+# ---------------------------------------------------------------------------
+samples:
+  structural:
+    dataset: structural           # long history, proxy series for SPMO/SCHD/QQQ
+    start: '1971-09'              # first full month after the USD/gold peg broke
+    label: STRUCTURAL_PROXY_TEST
+    primary: true
+  structural_long:
+    dataset: structural
+    start: '1927-07'              # French portfolios' common start
+    # GOLD: the dollar-gold price was institutionally fixed before 1971.
+    # QQQ:  the technology-industry composite only exists from 1965-07.
+    exclude: [GOLD, QQQ]
+    label: STRUCTURAL_PROXY_TEST
+    primary: false
+  live:
+    dataset: live                 # actual ETF total returns only
+    start: '2015-11'              # first full month of SPMO trading
+    label: LIVE_ONLY
+    primary: false
+
+# ---------------------------------------------------------------------------
+# Gold monetary-regime handling
+# ---------------------------------------------------------------------------
+gold:
+  free_float_start: '1971-09'     # month after Nixon closed the gold window
+  us_private_ownership_start: '1975-01'   # sensitivity start
+  fixed_regime_end: '1971-08'     # data before this is retained but never used
+                                  # in the primary analysis
+
+# ---------------------------------------------------------------------------
+# Simulation conventions
+# ---------------------------------------------------------------------------
+timing:
+  # 1 observe -> 2 deposit -> 3 rebalance -> 4 month return -> 5 record
+  contribution_timing: begin      # 'begin' (primary) or 'end' (sensitivity)
+
+contributions:
+  real_monthly_unit: 1.0          # constant REAL contribution of 1 unit/month
+  cpi_series: CPIAUCNS
+
+rolling_horizons_years: [5, 10, 15, 20, 30]
+
+rebalancing:
+  rules: [R0, R1, R2, R3]
+  annual_month: 1                 # January; sensitivity months below
+  annual_month_sensitivity: [1, 4, 7, 10]
+  relative_bands: [0.10, 0.20, 0.30]
+
+# ---------------------------------------------------------------------------
+# Weight search (only for combinations that survive equal-weight screening)
+# ---------------------------------------------------------------------------
+weight_search:
+  step: 0.10                      # coarse 10 percentage-point grid
+  min_weight: 0.0
+  max_assets: 4                   # keep the surviving candidate space small
+
+screening:
+  # A combination survives Phase 1 if it is not dominated on BOTH growth and
+  # robustness by a strictly simpler combination (see src/analysis.py).
+  top_n_by_median_rolling_10y: 20
+  horizon_for_screen_years: 10
+
+# ---------------------------------------------------------------------------
+# Costs and taxes.  Primary results are PRE_TAX and INDEX_GROSS.
+# ---------------------------------------------------------------------------
+costs:
+  apply_to_primary: false
+  expense_ratios_bps:             # only used in FEE_ADJUSTED_SIMULATION
+    SPY: 9.45
+    QQQ: 20.0
+    SCHD: 6.0
+    SPMO: 13.0
+    GOLD: 40.0                    # physical-gold ETF style cost
+    CASH: 0.0
+  proxy_implementation_drag_bps:  # extra annual drag applied to proxy series
+    SPMO: 30.0                    # momentum turnover is not free
+    SCHD: 10.0
+    QQQ: 10.0
+    SPY: 5.0
+    GOLD: 0.0
+    CASH: 0.0
+
+taxes:
+  enabled: false                  # sensitivity only
+  capital_gains_rate: 0.22        # configurable; NOT a legal assertion
+  annual_exemption: 0.0           # configurable, in contribution units
+  note: >
+    Investor-level tax on ETF disposals only.  Internal index/ETF turnover is
+    explicitly NOT taxed.  Rates are parameters, not verified tax law.
+
+random_seed: 20260814
