@@ -79,7 +79,7 @@ class Engine:
     def run_with_schedule(self, combo: tuple[str, ...], weights: np.ndarray,
                           rule: str, horizon: int, contributions: np.ndarray,
                           initial: float, band: float = 0.20,
-                          annual_month_offset: int = 0):
+                          annual_month_offset: int = 0, track_gap: bool = False):
         """Like :meth:`run`, but with an explicit deposit schedule and a
         starting portfolio -- the case where contributions are small relative
         to wealth."""
@@ -87,7 +87,8 @@ class Engine:
         R = self.windows(horizon)[:, :, idx]
         return simulate(R, weights, rule=rule, contributions=contributions,
                         initial=initial, band=band,
-                        annual_month_offset=annual_month_offset)
+                        annual_month_offset=annual_month_offset,
+                        track_gap=track_gap)
 
     def run(self, combo: tuple[str, ...], weights: np.ndarray, rule: str,
             horizon: int, with_contributions: bool, band: float = 0.20,

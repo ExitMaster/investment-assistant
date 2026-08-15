@@ -336,3 +336,17 @@ def test_exact_index_layer_matches_the_live_etfs_over_the_overlap(panels):
         g_etf = (1 + j.iloc[:, 1]).prod() ** (12 / n) - 1
         assert 0.0 < g_idx - g_etf < 0.006, (
             f"{exposure}: index {g_idx:.4f} vs ETF {g_etf:.4f}")
+
+
+def test_two_official_distributors_agree_on_the_nasdaq_100_total_return():
+    """The exact-index QQQ leg must be the same index whichever official
+    distributor supplies it.  Disagreement beyond rounding would mean one of
+    them is not the series it claims to be."""
+    from src import fetch
+    a = fetch.fred("NASDAQXNDX")
+    b = fetch.nasdaq_index_history("XNDX")
+    joined = pd.concat([a.rename("fred"), b.rename("nasdaq")], axis=1,
+                       join="inner").dropna()
+    assert len(joined) > 6000
+    rel = (joined["fred"] / joined["nasdaq"] - 1).abs()
+    assert rel.max() < 1e-5, f"max relative difference {rel.max():.2e}"

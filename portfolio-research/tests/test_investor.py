@@ -79,3 +79,37 @@ def test_weight_gap_is_worse_under_contribution_only_than_under_bands(eng, cfg):
     d = scen[scen.scenario == "D_none_0.0"].set_index("rule")["mean_weight_gap"]
     assert d["R1_contribution_only"] > d["R2_annual"]
     assert d["R1_contribution_only"] > d["R3_band_20pct"]
+
+
+def test_weight_drift_path_shows_contribution_only_degrading(eng, cfg):
+    """Contribution-only rebalancing holds the allocation while contributions
+    continue and loses it after they stop; band rules do not."""
+    d = investor.weight_drift_path(eng, ("QQQ", "SCHD", "SPMO"), cfg)
+    assert set(d.year) == set(range(1, cfg["investor"]["horizon_years"] + 1))
+
+    def gap(scenario, rule, year):
+        row = d[(d.scenario == scenario) & (d.rule == rule) & (d.year == year)]
+        return float(row.median_weight_gap.iloc[0])
+
+    # with contributions continuing, R1 stays closer to target than no rule
+    assert gap("A_unchanged_1.0", "R1_contribution_only", 20) < \
+           gap("A_unchanged_1.0", "R0_none", 20)
+    # once contributions stop, R1 drifts far more than it did with them
+    assert gap("D_none_0.0", "R1_contribution_only", 20) > \
+           gap("A_unchanged_1.0", "R1_contribution_only", 20)
+    # a band rule keeps the gap small in every scenario
+    for scen in ("A_unchanged_1.0", "D_none_0.0"):
+        assert gap(scen, "R3_band_20pct", 20) < 0.05
+        assert gap(scen, "R2_annual", 20) < 0.05
+
+
+def test_contribution_only_crosses_the_drift_threshold_only_when_cash_stops(eng, cfg):
+    d = investor.weight_drift_path(eng, ("QQQ", "SCHD", "SPMO"), cfg)
+    first = d.groupby(["scenario", "rule"]).first_year_above_threshold.first()
+    # 0 means "never crossed"
+    assert first[("A_unchanged_1.0", "R1_contribution_only")] == 0
+    for scen in ("B_half_0.5", "C_quarter_0.25", "D_none_0.0"):
+        assert first[(scen, "R1_contribution_only")] > 0
+    for scen in ("A_unchanged_1.0", "D_none_0.0"):
+        assert first[(scen, "R2_annual")] == 0
+        assert first[(scen, "R3_band_20pct")] == 0

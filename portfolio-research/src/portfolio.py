@@ -38,6 +38,7 @@ class SimResult:
     weight_gap_sum: np.ndarray        # (S,) sum over months of L1/2 weight gap
     gap_closed_by_contrib: np.ndarray  # (S,) weight gap removed by deposits
     gap_closed_by_sales: np.ndarray    # (S,) weight gap removed by selling
+    weight_gap_path: np.ndarray | None = None   # (S, H) gap in each month
     n_months: int = 0
     meta: dict = field(default_factory=dict)
 
@@ -138,6 +139,7 @@ def simulate(
     annual_month_offset: int = 0,
     band: float = 0.20,
     contribution_timing: str = "begin",
+    track_gap: bool = False,
 ) -> SimResult:
     """Simulate S rolling windows of a K-asset portfolio.
 
@@ -156,6 +158,8 @@ def simulate(
     annual_month_offset : month index within the window at which R2 rebalances
         (0 = the window's first month, then every 12 months).
     band : relative band for R3 (0.20 -> a 20% target may sit in 16%-24%).
+    track_gap : also record the post-rebalancing weight gap of every month, so
+        the drift can be read year by year rather than only in aggregate.
     contribution_timing : ``begin`` (deposit earns the month's return) or
         ``end`` (deposit lands after the return, sensitivity test).
     """
@@ -191,6 +195,7 @@ def simulate(
     gap_sum = np.zeros(S)
     gap_contrib = np.zeros(S)
     gap_sales = np.zeros(S)
+    gap_path = np.zeros((S, H)) if track_gap else None
 
     lo, hi = w * (1.0 - band), w * (1.0 + band)
 
@@ -227,10 +232,16 @@ def simulate(
                     events += n
                     gap_sales += np.maximum(gap_after_contrib - _weight_gap(V, w), 0.0)
 
-            gap_sum += _weight_gap(V, w)
+            gap_now = _weight_gap(V, w)
+            gap_sum += gap_now
+            if gap_path is not None:
+                gap_path[:, m] = gap_now
             V = V * (1.0 + R[:, m, :])
         else:                                       # deposit at month end
-            gap_sum += _weight_gap(V, w)
+            gap_now = _weight_gap(V, w)
+            gap_sum += gap_now
+            if gap_path is not None:
+                gap_path[:, m] = gap_now
             V = V * (1.0 + R[:, m, :])
             if rule in ("R0", "R2"):
                 V = V + cash[:, None] * w[None, :]
@@ -257,7 +268,8 @@ def simulate(
     return SimResult(
         total=total, holdings=V, contributed=contributed, sold=sold,
         bought_with_contrib=bought, rebalance_events=events,
-        weight_gap_sum=gap_sum, gap_closed_by_contrib=gap_contrib,
+        weight_gap_sum=gap_sum, weight_gap_path=gap_path,
+        gap_closed_by_contrib=gap_contrib,
         gap_closed_by_sales=gap_sales, n_months=H,
         meta={"rule": rule, "band": band, "weights": w.tolist(),
               "contribution_timing": contribution_timing},

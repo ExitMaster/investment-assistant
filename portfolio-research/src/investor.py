@@ -172,3 +172,48 @@ def capture_summary(scen_or_grid: pd.DataFrame, group_cols: list[str]
         gain_annual > 0.0005, gain_contrib / gain_annual, np.nan)
     out["annual_rebalancing_helped"] = gain_annual > 0.0005
     return out.reset_index()
+
+
+def weight_drift_path(eng: Engine, combo: tuple[str, ...], cfg: dict,
+                      threshold: float = 0.05) -> pd.DataFrame:
+    """Year-by-year distance from target weights, per scenario and rule.
+
+    Answers "when do shrinking contributions stop keeping the allocation near
+    target?" -- ``threshold`` is the gap (half the L1 distance, i.e. the share
+    of the portfolio sitting in the wrong asset) treated as "no longer near".
+    """
+    inv = cfg["investor"]
+    initial = float(inv["initial_wealth"])
+    horizon_years = int(inv["horizon_years"])
+    H = horizon_years * 12
+    if eng.n_starts(H) <= 0:
+        return pd.DataFrame()
+
+    w = np.full(len(combo), 1.0 / len(combo))
+    rows = []
+    for scen in inv["scenarios"]:
+        sched = scenario_schedule(horizon_years, inv["annual_contribution"],
+                                  scen["after"], int(inv["switch_year"]))
+        contrib = _contribution_matrix(eng, H, sched, initial)
+        for var in rebalance_variants(cfg):
+            band = 0.20 if np.isnan(var["band"]) else var["band"]
+            res = eng.run_with_schedule(combo, w, var["rule"], H, contrib,
+                                        initial, band=band, track_gap=True)
+            gap = res.weight_gap_path                     # (S, H)
+            by_year = gap.reshape(gap.shape[0], horizon_years, 12).mean(axis=2)
+            median_by_year = np.median(by_year, axis=0)
+            crossed = np.argmax(median_by_year > threshold) \
+                if (median_by_year > threshold).any() else -1
+            for y in range(horizon_years):
+                rows.append({
+                    "sample": eng.sample.name,
+                    "combo": combo_name(combo),
+                    "scenario": scen["name"],
+                    "rule": var["label"],
+                    "year": y + 1,
+                    "median_weight_gap": float(median_by_year[y]),
+                    "p90_weight_gap": float(np.percentile(by_year[:, y], 90)),
+                    "first_year_above_threshold": int(crossed + 1) if crossed >= 0 else 0,
+                    "threshold": threshold,
+                })
+    return pd.DataFrame(rows)

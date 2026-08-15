@@ -368,3 +368,81 @@ Overall verdict recorded in REPORT.md §5: **MODIFIED**.
   `contribution_ratio_grid.csv`, `contribution_capture_by_scenario.csv`,
   `contribution_capture_by_ratio.csv`.
 * Unresolved: the two S&P DJI index histories (§1.11b of REPORT.md).
+
+---
+
+## 2026-08-15 — Loop 7: a second official source, and *when* contribution-only fails
+
+Three gaps remained after loop 6's audit: one retrieval route named in the
+brief had not been tried, the drift question was answered only in aggregate,
+and the ±20% band's post-retirement usefulness was never stated outright.
+
+### 1. FRED — the route not tried, and what it produced
+
+Loop 6 attacked S&P DJI, Nasdaq, Invesco and Schwab but never searched **FRED**
+itself, even though the brief named it.  Doing so found
+**`NASDAQXNDX` — "NASDAQ-100 Total Return"**, i.e. FRED's licensed copy of the
+same index retrieved from Nasdaq in loop 6.
+
+Cross-validation of the two independent official distributors: 6,895 shared
+daily observations, **maximum relative difference 1.8 × 10⁻⁶**, mean 1.7 × 10⁻⁷.
+The gap is FRED rounding to two decimals; nothing else differs.  This is a real
+verification of the exact-index layer, not a formality — a wrong symbol or a
+net-return variant would have shown up immediately.
+
+FRED is now the **primary** source for the QQQ leg because it is reliably
+retrievable (no Incapsula challenge), with the Nasdaq export kept as the
+cross-check and a test asserting agreement.  This also repairs the loop-6
+reproducibility weakness: a fresh `--refresh` run no longer depends on getting
+past a bot challenge.
+
+**FRED does not have the two missing series.**  It was searched directly for
+both.  It carries hundreds of Nasdaq-branded indices (including many total-return
+variants) and `SP500` for the S&P 500 price index, but neither the S&P 500
+Momentum index nor the Dow Jones U.S. Dividend 100 index appears under any name
+the search surfaced — S&P DJI licenses those more restrictively.  The BLOCKED
+report in REPORT.md §1.11b is unchanged and now also records this attempt.
+
+### 2. When does contribution-only stop keeping weights near target?
+
+Loop 6 reported average weight gaps but could not say *when* drift sets in.
+Added per-month gap tracking to the simulator (`simulate(..., track_gap=True)`,
+an optional `(S, H)` array — off by default, so nothing else pays for it) and
+`investor.weight_drift_path`, which reports the median gap year by year and the
+first year it crosses a 5%-of-portfolio threshold.
+
+Result (QQQ+SCHD+SPMO, 20-year windows, primary sample):
+
+| rule | A: 1.0/yr | B: 0.5/yr | C: 0.25/yr | D: 0/yr |
+|---|---|---|---|---|
+| no rebalancing | year 4 | year 4 | year 4 | year 4 |
+| **contribution-only** | **never** | **year 8** | **year 7** | **year 7** |
+| annual | never | never | never | never |
+| ±20% band | never | never | never | never |
+
+Contribution-only holds the allocation together **only while contributions keep
+arriving**, and degrades towards unrebalanced drift within roughly two years of
+the contribution cliff — 6.4% off target by year 20 with no new cash, against
+7.7% for doing nothing and 1.7% for annual rebalancing.  Two tests pin this.
+
+### 3. Is a ±20% band still useful after retirement?
+
+Stated explicitly rather than left implicit: yes.  In scenario D (no new cash)
+it returns 1.094× the no-rebalancing terminal wealth, holds the allocation
+within 2.7% of target and turns over 2.8%/yr.  ±30% is better on both counts
+(1.127×, 2.4%/yr), so the honest recommendation is a band anywhere in the
+±20%–±30% range; the thing that stops working is contribution-only.
+
+### A note on what was *not* changed
+
+No weights were re-optimised on any validation period, no conclusion was
+rewritten to fit new data, and no failing test was disabled.  The two findings
+that changed in loop 6 (SCHD unconfirmed, contribution-only capture) were left
+as they were — this loop only sharpened the evidence behind them.
+
+### State after loop 7
+* **93 tests, all passing** (90 → 93).
+* Exact-index QQQ leg verified against a second official distributor.
+* New table: `weight_drift_path.csv` (27 tables total).
+* Verdict unchanged: **MODIFIED** (REPORT.md §5).
+* Still unresolved: the two S&P DJI index histories (§1.11b).

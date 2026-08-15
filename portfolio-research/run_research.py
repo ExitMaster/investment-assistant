@@ -456,7 +456,12 @@ def main() -> None:
     investor.capture_summary(grid_ratio, ["annual_contribution_ratio", "combo"]
                              ).to_csv(TABLES / "contribution_capture_by_ratio.csv",
                                       index=False)
-    log(f"  {len(scen)} scenario rows, {len(grid_ratio)} ratio-grid rows")
+    drift = pd.concat(
+        [investor.weight_drift_path(primary, c, cfg) for c in cand if len(c) > 1],
+        ignore_index=True)
+    drift.to_csv(TABLES / "weight_drift_path.csv", index=False)
+    log(f"  {len(scen)} scenario rows, {len(grid_ratio)} ratio-grid rows, "
+        f"{len(drift)} drift-path rows")
 
     log("phase 8b: implementation-cost break-even for the proxy exposures")
     drags = [0, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500]

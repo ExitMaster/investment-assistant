@@ -282,9 +282,14 @@ is a mechanism, not a curve fit.
 
 ### 1.11a Exact-index validation (official S&P 500 TR + Nasdaq-100 TR, 1999-2026)
 
-Nasdaq publishes the **Nasdaq-100 Total Return Index (XNDX)** and its history
-was retrieved from Nasdaq's own Global Index Data Service (daily closes,
-1999-03-04 → 2026-07-31).  Combined with the official S&P 500 Total Return
+The **Nasdaq-100 Total Return Index (XNDX)** was retrieved from **two
+independent official distributors** and they agree to rounding: Nasdaq's own
+Global Index Data Service export (6,896 daily closes, 1999-03-04 → 2026-07-31)
+and FRED's licensed copy, `NASDAQXNDX` (6,904 closes to 2026-08-13).  Across the
+6,895 shared days the maximum relative difference is **1.8 × 10⁻⁶** — FRED
+rounds to two decimals and nothing else differs.  FRED is used as the primary
+source because it is reliably retrievable; the Nasdaq export is retained as the
+cross-check and a test asserts the two agree.  Combined with the official S&P 500 Total Return
 index, the LBMA gold price and the Treasury bill, this gives a **proxy-free
 layer of four exposures over 328 months (1999-04 → 2026-07)** covering the
 dot-com collapse, the GFC, COVID and 2022.
@@ -335,7 +340,14 @@ that wording has been corrected.  What failed was retrieval, not existence:
 | S&P 500 Momentum Index (USD) **Total Return**, monthly or daily closes | S&P Dow Jones Indices, `spglobal.com/spdji/en/indices/equity/sp-500-momentum-index/` | 1999-01 → 2026-07 | HTTP **403** from S&P's own bot protection on every path tried: the index page, the `idsapi` data endpoint, the `index-data` `.dot` export, the legacy `us.spindices.com` host (DNS failure), and full browser-header requests |
 | Dow Jones U.S. Dividend 100 **Total Return**, monthly or daily closes | S&P Dow Jones Indices, `spglobal.com/spdji/en/indices/equity/dow-jones-us-dividend-100-index/` | 1999-01 → 2026-07 | identical 403 |
 
-Fallbacks attempted and their outcomes: Yahoo Finance *lists* `^SP500MUP`,
+**FRED was searched directly for both** (it was the obvious remaining official
+route, and it is how the Nasdaq-100 total return was ultimately sourced).  FRED
+carries hundreds of Nasdaq-branded index series including total-return variants,
+and `SP500` for the S&P 500 price index — but **neither the S&P 500 Momentum
+index nor the Dow Jones U.S. Dividend 100 index is in FRED** under any name the
+search surfaced.  S&P DJI licenses those series more restrictively.
+
+Other fallbacks attempted and their outcomes: Yahoo Finance *lists* `^SP500MUP`,
 `^DJUSDIVT` and `^DJUSDIV` but serves **no history** for them (one data point,
 today's quote); Invesco's SPMO pages return HTTP 406 and Schwab's SCHD pages
 403; a real Chromium browser (installed here) cannot reach **any** host through
@@ -410,6 +422,32 @@ weight deviation from target is 4.5% at a 5% contribution ratio and 6.1% with no
 contributions at all, against 2.2% for annual rebalancing and 2.3% for a ±20%
 band.
 
+**When do shrinking contributions stop holding the allocation together?**
+Tracking the median distance from target weights year by year
+(`results/tables/weight_drift_path.csv`; the figure is the share of the
+portfolio sitting in the wrong asset):
+
+| year | R0 none | R1 contrib-only (A: 1.0/yr) | R1 contrib-only (D: 0/yr) | R2 annual | R3 ±20% |
+|---|---|---|---|---|---|
+| 5 | 7.0% | 3.2% | 3.2% | 1.8% | 2.1% |
+| 8 | 6.7% | 4.7% | 6.8% | 1.8% | 2.6% |
+| 12 | 5.8% | 4.6% | 6.4% | 1.7% | 2.6% |
+| 20 | 7.7% | 4.0% | 6.4% | 1.7% | 2.7% |
+
+First year the median gap exceeds 5% of the portfolio (0 = never):
+
+| rule | A: 1.0/yr | B: 0.5/yr | C: 0.25/yr | D: 0/yr |
+|---|---|---|---|---|
+| R0 none | 4 | 4 | 4 | 4 |
+| **R1 contribution-only** | **never** | **year 8** | **year 7** | **year 7** |
+| R2 annual | never | never | never | never |
+| R3 ±20% band | never | never | never | never |
+
+So contribution-only holds the line **only while the contributions keep coming**.
+Within about two years of the contribution cliff it degrades towards
+unrebalanced drift — by year 20 with no contributions it sits 6.4% away from
+target, against 7.7% for doing nothing at all and 1.7% for annual rebalancing.
+
 Which rule is best for *this* investor (QQQ+SCHD+SPMO, 20-year windows, median
 terminal wealth relative to never rebalancing):
 
@@ -426,6 +464,14 @@ A **±30% relative band wins on terminal wealth in every scenario while selling
 the least** — roughly half the turnover of annual rebalancing and a third of a
 ±10% band.  Its advantage over ±20% is inside the noise; its advantage over
 contribution-only is not.
+
+**Does the ±20% band remain useful after retirement?**  Yes.  In scenario D — no
+new cash at all — it still returns **1.094×** the no-rebalancing terminal wealth
+while holding the allocation within 2.7% of target, at 2.8%/yr turnover.  It is
+not the top performer (±30% is, at 1.127× and lower turnover), but it remains
+clearly useful, and unlike contribution-only it does not depend on cash flow
+that has stopped.  The practical reading: **any band in the ±20%–±30% range is
+defensible; contribution-only is not, once contributions fall.**
 
 ### 1.12 Timing, fee and tax sensitivities change nothing
 
@@ -708,7 +754,8 @@ dimensions and uncertain in the SCHD dimension**.
 
 **6. Given 20:1 wealth-to-contribution now and much lower contributions after
 year 5, what rebalancing rule remains robust?**
-A **±30% relative band, contributions applied first**.  It produced the highest
+A **relative band with contributions applied first — ±30% best, ±20% also
+sound**.  A ±30% band  It produced the highest
 median terminal wealth in all four retirement scenarios (1.107× to 1.130× versus
 never rebalancing) while selling the least — 2.2-2.6× initial wealth cumulatively
 over 20 years, against 4.1-4.5× for annual rebalancing and 5.4-6.0× for a ±10%
