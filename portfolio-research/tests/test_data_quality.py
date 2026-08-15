@@ -303,3 +303,36 @@ def test_official_index_layer_holds_no_proxy_series(cfg):
         row = manifest[(manifest.exposure == exposure)
                        & (manifest.dataset == "index")].iloc[0]
         assert row.data_class == "OFFICIAL_INDEX", f"{exposure}: {row.data_class}"
+
+
+# --------------------------------------------------------------------------
+# the exact-index layer
+# --------------------------------------------------------------------------
+def test_nasdaq_total_return_index_is_total_return(panels):
+    """XNDX must beat the Nasdaq-100 price index by a dividend yield."""
+    tr = panels["index"]["QQQ"].dropna()
+    pr = panels["index"]["QQQ_PRICE_ONLY"].dropna()
+    j = pd.concat([tr, pr], axis=1).dropna()
+    n = len(j)
+    gap = ((1 + j.iloc[:, 0]).prod() ** (12 / n)
+           - (1 + j.iloc[:, 1]).prod() ** (12 / n))
+    assert 0.0 < gap < 0.02, f"XNDX minus NDX price return = {gap:.4f}/yr"
+
+
+def test_nasdaq_index_contains_the_dot_com_collapse(panels):
+    w = (1 + panels["index"]["QQQ"].dropna().loc["2000-01":"2002-12"]).cumprod()
+    assert (w / w.cummax() - 1).min() < -0.70
+
+
+def test_exact_index_layer_matches_the_live_etfs_over_the_overlap(panels):
+    """The official indices must track their ETFs, the ETF lagging by fees."""
+    for exposure in ("SPY", "QQQ"):
+        idx = panels["index"][exposure].dropna()
+        etf = panels["live"][exposure].dropna()
+        j = pd.concat([idx, etf], axis=1).dropna()
+        assert j.iloc[:, 0].corr(j.iloc[:, 1]) > 0.995
+        n = len(j)
+        g_idx = (1 + j.iloc[:, 0]).prod() ** (12 / n) - 1
+        g_etf = (1 + j.iloc[:, 1]).prod() ** (12 / n) - 1
+        assert 0.0 < g_idx - g_etf < 0.006, (
+            f"{exposure}: index {g_idx:.4f} vs ETF {g_etf:.4f}")

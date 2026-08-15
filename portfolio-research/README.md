@@ -27,7 +27,7 @@ required).  Without `--refresh` the run is entirely offline and deterministic:
 `data/raw` holds the exact source payloads the published results came from.
 
 ```bash
-python -m pytest tests/ -q      # 81 data-integrity and portfolio-math tests
+python -m pytest tests/ -q      # 90 data-integrity, portfolio-math and investor tests
 ```
 
 ## What is where
@@ -45,6 +45,7 @@ python -m pytest tests/ -q      # 81 data-integrity and portfolio-math tests
 | `src/metrics.py` | growth / risk / distribution statistics |
 | `src/analysis.py` | combination screening, rolling stats, rebalancing, weight grid |
 | `src/proxy_validation.py` | measures each structural proxy against its ETF |
+| `src/investor.py` | rebalancing when contributions are small relative to wealth |
 | `src/charts.py` | the ten analytical charts |
 | `results/REPORT.md` | findings, inferences, limitations |
 | `results/run_log.md` | what failed, what was corrected, and why |
@@ -54,13 +55,16 @@ python -m pytest tests/ -q      # 81 data-integrity and portfolio-math tests
 | Dataset | Class | Window | What it is |
 |---|---|---|---|
 | `live` | `LIVE_ONLY` | 2015-11 → 2026-07 | actual ETF total returns (SPY, QQQ, SCHD, SPMO, GLD) plus a T-bill return |
-| `index` | `OFFICIAL_INDEX_EXTENDED` | 1934-02 → 2026-07 | `^SP500TR`, the LBMA gold price and the Treasury bill — plus `^NDX` (price return) and ETF price-return twins, which are **diagnostics only and can never enter a simulation** |
+| `index` | `OFFICIAL_INDEX_EXTENDED` | 1934-02 → 2026-07 | `^SP500TR` (S&P 500 Total Return), **`XNDX` (Nasdaq-100 Total Return, from Nasdaq's own index service)**, the LBMA gold price and the Treasury bill — plus `^NDX` (price return) and ETF price-return twins, which are **diagnostics only and can never enter a simulation** |
 | `structural` | `STRUCTURAL_PROXY_TEST` | 1926-07 → 2026-07 | long academic/benchmark series standing in for each exposure |
 
-No public total-return history exists for the Dow Jones U.S. Dividend 100 or
-the S&P 500 Momentum index, and none for the Nasdaq-100 either, so the
-official-index layer can only carry SPY, GOLD and CASH.  Nothing here presents
-a pre-launch series as ETF performance.
+The Dow Jones U.S. Dividend 100 and S&P 500 Momentum total-return indices
+**exist and are published by S&P DJI**, but could not be retrieved
+programmatically from this environment — every route returns S&P's bot-protection
+403, and a real browser cannot traverse this sandbox's egress proxy.  See
+`results/REPORT.md` §1.11b for the exact series, date range and file that would
+unblock them.  No proxy was substituted for them in any exact-index result.
+Nothing here presents a pre-launch series as ETF performance.
 
 Price-return series are kept in `data/processed/index_monthly.csv` under a
 `_PRICE_ONLY` suffix purely so the dividend-inclusion audit can run against
@@ -74,7 +78,8 @@ the manifest (except gold, which has no income, and cash, which is yield-derived
 |---|---|---|---|
 | `structural` | 1971-09 → 2026-06 (658 months) | all six | **primary** |
 | `structural_long` | 1927-07 → 2026-06 (1188 months) | SPY, SCHD, SPMO, CASH | century-long robustness check |
-| `official_index` | 1988-02 → 2026-07 (462 months) | SPY, GOLD, CASH | proxy-free cross-check |
+| `exact_index` | 1999-04 → 2026-07 (328 months) | SPY, QQQ, GOLD, CASH | **proxy-free exact-index validation** |
+| `official_index` | 1988-02 → 2026-07 (462 months) | SPY, GOLD, CASH | longer proxy-free cross-check |
 | `live` | 2015-11 → 2026-07 (129 months) | all six | out-of-sample validation, never training |
 
 The primary sample starts the month after the dollar-gold peg broke; gold data

@@ -76,6 +76,19 @@ class Engine:
         return self._P[:S] / self._C[horizon - 1: horizon - 1 + S]
 
     # ---- runs ------------------------------------------------------------
+    def run_with_schedule(self, combo: tuple[str, ...], weights: np.ndarray,
+                          rule: str, horizon: int, contributions: np.ndarray,
+                          initial: float, band: float = 0.20,
+                          annual_month_offset: int = 0):
+        """Like :meth:`run`, but with an explicit deposit schedule and a
+        starting portfolio -- the case where contributions are small relative
+        to wealth."""
+        idx = [self._cols[c] for c in combo]
+        R = self.windows(horizon)[:, :, idx]
+        return simulate(R, weights, rule=rule, contributions=contributions,
+                        initial=initial, band=band,
+                        annual_month_offset=annual_month_offset)
+
     def run(self, combo: tuple[str, ...], weights: np.ndarray, rule: str,
             horizon: int, with_contributions: bool, band: float = 0.20,
             annual_month_offset: int = 0, contribution_timing: str = "begin",
@@ -388,6 +401,91 @@ def subperiod_stability(eng: Engine, base: tuple[str, ...], added: str,
         out["maxdd_delta"] = out["maxdd_with"] - out["maxdd_without"]
         out["vol_delta"] = out["vol_with"] - out["vol_without"]
         rows.append(out)
+    return pd.DataFrame(rows)
+
+
+# --------------------------------------------------------------------------
+# incremental effect of adding one exposure to a base portfolio
+# --------------------------------------------------------------------------
+def incremental_effect(eng: Engine, base: tuple[str, ...], added: str,
+                       horizon_years: int, rule: str = PHASE1_RULE) -> dict | None:
+    """What does adding one exposure to ``base`` do, on every rolling window?
+
+    Both portfolios are equal-weighted, so the comparison is "one more equally
+    weighted holding", not a weight optimisation.
+    """
+    H = horizon_years * 12
+    if eng.n_starts(H) <= 0:
+        return None
+    if added in base or added not in eng.sample.exposures:
+        return None
+    if any(a not in eng.sample.exposures for a in base):
+        return None
+    with_ = tuple(list(base) + [added])
+    defl = eng.deflator(H)
+    refs = benchmark_terminal_wealth(eng, horizon_years, rule)
+
+    out: dict[str, object] = {
+        "sample": eng.sample.name, "sample_label": eng.sample.label,
+        "base": combo_name(base), "added": added, "result": combo_name(with_),
+        "horizon_years": horizon_years, "n_windows": eng.n_starts(H),
+        "n_independent_windows": metrics.effective_independent_windows(
+            eng.sample.n_months, H),
+        "first_start": str(eng.start_periods(H)[0]),
+        "last_start": str(eng.start_periods(H)[-1]),
+    }
+    stats: dict[str, dict[str, np.ndarray]] = {}
+    for label, combo in (("base", base), ("with", with_)):
+        w = np.full(len(combo), 1.0 / len(combo))
+        lump = eng.run(combo, w, rule, H, with_contributions=False)
+        acc = eng.run(combo, w, rule, H, with_contributions=True)
+        c = metrics.cagr(lump.total)
+        stats[label] = {
+            "cagr": c,
+            "maxdd": metrics.max_drawdown(lump.total),
+            "vol": metrics.annualised_vol(lump.monthly_returns),
+            "real_tw": acc.terminal_wealth * defl,
+        }
+    for key, agg in (("median", np.median), ("p10", lambda v: np.percentile(v, 10)),
+                     ("worst", np.min)):
+        for field in ("cagr", "maxdd", "vol", "real_tw"):
+            b = float(agg(stats["base"][field]))
+            a = float(agg(stats["with"][field]))
+            out[f"{field}_{key}_base"] = b
+            out[f"{field}_{key}_with"] = a
+            out[f"{field}_{key}_delta"] = a - b
+    out["pct_windows_added_helped_tw"] = metrics.share(
+        stats["with"]["real_tw"] > stats["base"]["real_tw"])
+    out["pct_windows_added_helped_cagr"] = metrics.share(
+        stats["with"]["cagr"] > stats["base"]["cagr"])
+    for bench, btw in refs.items():
+        out[f"pct_beating_{bench}_base"] = metrics.share(
+            stats["base"]["real_tw"] / btw > 1.0)
+        out[f"pct_beating_{bench}_with"] = metrics.share(
+            stats["with"]["real_tw"] / btw > 1.0)
+    return out
+
+
+INCREMENTAL_STEPS: list[tuple[tuple[str, ...], str]] = [
+    (("SPMO",), "QQQ"),                       # (QQQ+SPMO) vs SPMO
+    (("QQQ", "SPMO"), "SCHD"),                # (QQQ+SCHD+SPMO) vs (QQQ+SPMO)
+    (("QQQ", "SCHD", "SPMO"), "GOLD"),        # +GOLD
+    (("QQQ", "SCHD", "SPMO"), "SPY"),         # +SPY
+    (("QQQ", "SCHD", "SPMO"), "CASH"),        # +CASH
+    (("QQQ", "SPMO"), "GOLD"),                # SPMO+QQQ+Gold, asked explicitly
+    (("SPY",), "QQQ"),                        # runs on the exact-index layer too
+    (("SPY", "QQQ"), "GOLD"),
+    (("SPY", "QQQ"), "CASH"),
+]
+
+
+def incremental_table(eng: Engine, horizons: tuple[int, ...]) -> pd.DataFrame:
+    rows = []
+    for hy in horizons:
+        for base, added in INCREMENTAL_STEPS:
+            row = incremental_effect(eng, base, added, hy)
+            if row:
+                rows.append(row)
     return pd.DataFrame(rows)
 
 

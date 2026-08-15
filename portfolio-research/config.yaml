@@ -22,13 +22,21 @@ samples:
     exclude: [GOLD, QQQ]
     label: STRUCTURAL_PROXY_TEST
     primary: false
+  exact_index:
+    dataset: index                # official index / published benchmark only
+    start: '1999-04'              # first full month of Nasdaq's XNDX history
+    # SCHD and SPMO have no publicly retrievable index history (see run_log);
+    # they are covered exactly, but only from ETF inception, in `live`.
+    exclude: [SCHD, SPMO]
+    label: OFFICIAL_INDEX_EXTENDED
+    primary: false
   official_index:
     dataset: index                # official index / published benchmark only
     start: '1988-02'              # first full month of the S&P 500 TR index
-    # QQQ:  no public Nasdaq-100 TOTAL-return history is retrievable; the
-    #       price-return series must never enter a simulation.
-    # SCHD: no public Dow Jones U.S. Dividend 100 history is retrievable.
-    # SPMO: no public S&P 500 Momentum index history is retrievable.
+    # QQQ:  the official XNDX history Nasdaq publishes starts 1999-03, so it
+    #       cannot reach back to this sample's 1988 start (see `exact_index`).
+    # SCHD/SPMO: their index histories exist but could not be retrieved
+    #       programmatically -- S&P DJI bot-blocks every route (see run_log).
     exclude: [QQQ, SCHD, SPMO]
     label: OFFICIAL_INDEX_EXTENDED
     primary: false
@@ -59,6 +67,25 @@ contributions:
   cpi_series: CPIAUCNS
 
 rolling_horizons_years: [5, 10, 15, 20, 30]
+
+# ---------------------------------------------------------------------------
+# The specific investor.  Units are arbitrary but consistent: the portfolio
+# starts at 20 and 1 unit of new real cash arrives each year, so the first-year
+# contribution/wealth ratio is 5%.  Retirement is contemplated in ~5 years,
+# after which new cash may fall sharply -- hence the four scenarios.
+# ---------------------------------------------------------------------------
+investor:
+  initial_wealth: 20.0
+  annual_contribution: 1.0        # real units per year before the switch
+  switch_year: 5
+  horizon_years: 20
+  scenarios:
+    - {name: "A_unchanged_1.0", after: 1.00}
+    - {name: "B_half_0.5",      after: 0.50}
+    - {name: "C_quarter_0.25",  after: 0.25}
+    - {name: "D_none_0.0",      after: 0.00}
+  # A generic sweep, so the answer is a relationship rather than one life path.
+  contribution_ratio_grid: [0.00, 0.02, 0.05, 0.10, 0.20]
 
 rebalancing:
   rules: [R0, R1, R2, R3]

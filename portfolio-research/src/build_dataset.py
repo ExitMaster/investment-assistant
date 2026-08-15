@@ -252,14 +252,18 @@ def build_all(refresh: bool = False) -> dict[str, pd.DataFrame]:
 
     ndx = y.daily("^NDX", refresh=refresh)
     panels["index"]["QQQ_PRICE_ONLY"] = _pct_change(_month_end_last(ndx["close"]))
+
+    xndx = fetch.nasdaq_index_history("XNDX", refresh=refresh)
+    panels["index"]["QQQ"] = _pct_change(_month_end_last(xndx))
     specs.append(SeriesSpec(
-        "QQQ", "index", "Yahoo Finance chart API (Nasdaq data)",
-        YAHOO_URL.format("^NDX"), "^NDX - Nasdaq-100 Index (price return)",
-        "PRICE_RETURN", "OFFICIAL_INDEX",
-        "daily close -> last obs. of each month -> pct change",
-        "NO public total-return history of the Nasdaq-100 was retrievable.  "
-        "This PRICE-RETURN series is used only for labelled diagnostics and "
-        "never enters a portfolio simulation.",
+        "QQQ", "index", "Nasdaq Global Index Data Service",
+        f"{fetch.NASDAQ_INDEX_BASE}/Index/History/XNDX",
+        "XNDX - Nasdaq-100 Total Return Index",
+        "TOTAL_RETURN", "OFFICIAL_INDEX",
+        "official daily index close -> last obs. of each month -> pct change",
+        "Nasdaq's own published history for this index begins 1999-03-04, so "
+        "the exact-index layer starts 1999-04.  Gross index: no fund fee and "
+        "no tracking error.",
     ))
 
     # The official-index layer needs a gold and a cash leg to be analysable as

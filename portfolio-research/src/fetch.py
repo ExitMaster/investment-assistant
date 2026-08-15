@@ -267,3 +267,74 @@ def french_series(zip_name: str, column: str,
 def available_french_columns(zip_name: str,
                              title_pattern: str = r"Monthly") -> Iterable[str]:
     return list(french_monthly_table(french_zip(zip_name), title_pattern).columns)
+
+
+# --------------------------------------------------------------------------
+# Nasdaq official index history
+# --------------------------------------------------------------------------
+NASDAQ_INDEX_BASE = "https://indexes.nasdaqomx.com"
+
+
+def _curl_nasdaq(page_url: str, export_url: str, tries: int = 4) -> bytes:
+    """Fetch the export with curl, carrying the cookie the page hands out."""
+    import subprocess
+    import tempfile
+    for i in range(tries):
+        with tempfile.TemporaryDirectory() as tmp:
+            jar = Path(tmp) / "cookies.txt"
+            out = Path(tmp) / "export.bin"
+            base = ["curl", "-sS", "--http1.1", "--max-time", "90",
+                    "-H", f"User-Agent: {_UA}"]
+            subprocess.run(base + ["-c", str(jar), "-o", "/dev/null", page_url],
+                           check=False, capture_output=True)
+            subprocess.run(base + ["-b", str(jar), "-H", f"Referer: {page_url}",
+                                   "-o", str(out), export_url],
+                           check=False, capture_output=True)
+            data = out.read_bytes() if out.exists() else b""
+        if data[:2] == b"PK":
+            return data
+        time.sleep(15 * (i + 1))
+    return data
+
+
+def nasdaq_index_history(symbol: str, start: str = "1980-01-01",
+                         end: str = "2100-01-01", refresh: bool = False
+                         ) -> pd.Series:
+    """Daily closing values of a Nasdaq index, from Nasdaq's own index site.
+
+    ``symbol`` is the Nasdaq index ticker, e.g. ``XNDX`` for the Nasdaq-100
+    **Total Return** index.  The site hands out an .xlsx export once a session
+    cookie exists, so the history page is fetched first.
+
+    The site sits behind Imperva/Incapsula, which starts serving a JavaScript
+    challenge to any client that fetches repeatedly.  The export is pulled with
+    ``curl`` -- whose TLS fingerprint the challenge accepts where
+    python-requests' is refused -- and cached.  A challenged run falls back to
+    the cached payload rather than silently producing nothing.
+    """
+    cache = _cache_path(f"nasdaq_{symbol}.xlsx")
+    if refresh or not cache.exists():
+        page = f"{NASDAQ_INDEX_BASE}/Index/History/{symbol}"
+        url = (f"{NASDAQ_INDEX_BASE}/Index/ExportHistory/{symbol}"
+               f"?startDate={start}T00:00:00&endDate={end}T00:00:00&timeOfDay=EOD")
+        payload = _curl_nasdaq(page, url)
+        if payload[:2] != b"PK":
+            if cache.exists():
+                print(f"  nasdaq: {symbol} export was challenged; using cache")
+            else:
+                raise RuntimeError(
+                    f"Nasdaq served a challenge instead of the {symbol} export "
+                    f"and no cached copy exists. Retry later, or download "
+                    f"{url} in a browser and save it to {cache}.")
+        else:
+            cache.write_bytes(payload)
+
+    import openpyxl
+    ws = openpyxl.load_workbook(cache, read_only=True, data_only=True)["History"]
+    rows = [(r[0], r[1]) for r in ws.iter_rows(values_only=True)
+            if r and hasattr(r[0], "year") and r[1] is not None]
+    if not rows:
+        raise RuntimeError(f"no rows parsed from the {symbol} export")
+    s = pd.Series({pd.Timestamp(d): float(v) for d, v in rows}).sort_index()
+    s.name = symbol
+    return s

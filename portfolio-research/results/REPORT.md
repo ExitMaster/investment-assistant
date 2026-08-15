@@ -3,6 +3,7 @@
 **Primary evidence**: `structural` sample, 1971-09 → 2026-06 (658 months), all six
 exposures, equal weights, annual rebalancing, monthly rolling start dates.
 **Validation**: `live` sample, 2015-11 → 2026-07 (129 months), actual ETFs.
+**Exact-index layer**: `exact_index`, 1999-04 → 2026-07 (328 months), official S&P 500 TR + Nasdaq-100 TR (XNDX) + LBMA gold + T-bill (§1.11a).
 **Official-index cross-check**: `official_index`, 1988-02 → 2026-07 (462 months), SPY/GOLD/CASH only.
 **Century check**: `structural_long`, 1927-07 → 2026-06 (1188 months), four exposures.
 
@@ -15,6 +16,12 @@ appears in `results/tables/`.  Read §3 (Limitations) before acting on §1.
 > measured advantage is worth about **145 basis points a year of implementation
 > cost** and no more (§1.7).  Every statement about "SPMO" over 1971-2026 is a
 > statement about large-cap momentum as an *idea*, not about the ETF.
+>
+> **Second caveat, added in this revision.** Two conclusions changed when exact
+> data and this investor's actual cash flows were used: SCHD's incremental value
+> is not confirmed on exact ETFs (§1.11c), and the "contributions do most of the
+> rebalancing" result is specific to a saver starting from zero wealth (§1.11d).
+> The overall verdict is **MODIFIED**, not confirmed — see §5.
 
 ---
 
@@ -50,11 +57,17 @@ Median / 10th-percentile / worst annualised return across every monthly start:
 | 20y | 12.46 / 9.36 / 5.73 | 11.31 / 8.44 / 6.96 | 11.74 / 7.77 / 2.25 | 10.81 / 7.76 / 4.98 | 5.84 / −0.82 / −4.36 | 4.22 / 1.42 / 1.13 |
 | 30y | 13.18 / 11.64 / 10.63 | 12.46 / 10.56 / 9.41 | 12.24 / 10.34 / 8.98 | 10.84 / 9.93 / 9.42 | 4.68 / 3.26 / 1.69 | 3.98 / 2.28 / 2.21 |
 
-(percent; `results/tables/rolling_{10,20,30}y.csv`)
+(percent; `results/tables/rolling_{10,20,30}y.csv`.  These percentiles describe
+the spread across overlapping start dates.  They are **not** percentiles of a
+sample of independent observations: 658 months contain 5, 2 and 1 independent
+10-, 20- and 30-year windows respectively, and every rolling table carries
+`n_independent_windows` beside `n_windows`.)
 
 The ordering SPMO > SCHD ≈ QQQ > SPY > GOLD > CASH is stable at every horizon
-from 5 to 30 years, and it also holds on the independent 1927-2026 sample for
-the four exposures that reach back that far (SPMO 14.16%, SCHD 12.83%,
+from 5 to 30 years, and it also holds on the longer 1927-2026 sample for the
+four exposures that reach back that far.  That sample is an **extension, not an
+independent test**: it contains the whole 1971-2026 primary window inside it,
+so it adds 44 earlier years of evidence and nothing more (SPMO 14.16%, SCHD 12.83%,
 SPY 10.89%, CASH 3.28% median rolling 20-year CAGR).
 
 ### 1.3 The best combinations are not the highest-return ones
@@ -143,7 +156,10 @@ This is not a January artefact: rebalancing in January, April, July or October
 gives median ratios of 1.0031–1.0059 for QQQ+SPMO and 1.0051–1.0059 for
 QQQ+SCHD+SPMO. (`results/tables/rebalance_month_sensitivity.csv`)
 
-**How much do contributions alone capture?**  Among the 18 combinations where
+**How much do contributions alone capture?**  *(Read §1.11d before using these
+numbers: they describe a pure-accumulation investor starting from zero wealth,
+and they fall to 2-19% for an investor who already holds a portfolio.)*  Among
+the 18 combinations where
 annual rebalancing raised median 20-year terminal wealth, contribution-only
 rebalancing captured a median **55%** of that gain — and for the all-equity
 candidates specifically, **79%–94%** (QQQ+SPMO 79%, QQQ+SCHD+SPMO 82%,
@@ -230,9 +246,10 @@ No weight, rule or exposure was chosen using this period.
 A third layer uses **only official index / published-benchmark data and no
 proxies at all**: the S&P 500 Total Return index, the LBMA gold price and the
 Treasury bill, 1988-02 → 2026-07 (462 months, 7 combinations).  It cannot
-include QQQ, SCHD or SPMO, because no public total-return history of the
-Nasdaq-100, the Dow Jones U.S. Dividend 100 or the S&P 500 Momentum index is
-retrievable.
+include SCHD or SPMO.  Those index total-return histories **exist** -- S&P DJI
+publishes both -- but could not be retrieved programmatically from this
+environment; see §1.11b and `run_log.md`.  The Nasdaq-100 total-return history
+*was* obtained and now forms its own layer (§1.11a).
 
 Rolling 20-year windows, `OFFICIAL_INDEX_EXTENDED` layer:
 
@@ -245,9 +262,11 @@ Rolling 20-year windows, `OFFICIAL_INDEX_EXTENDED` layer:
 | SPY+CASH | 6.11% | 4.49% | −26.4% | 1.40 |
 | CASH | 2.11% | 1.30% | 0.0% | 0.93 |
 
-The gold result of §1.8 reproduces on data that shares no series with the
-structural layer: adding gold to equity lifts the 10th percentile (6.42% →
-7.62%) and halves the drawdown, at a small cost in median return.
+The gold result of §1.8 reproduces here on a **different equity series and a
+different period**: adding gold to equity lifts the 10th percentile (6.42% →
+7.62%) and halves the drawdown, at a small cost in median return.  This is *not*
+a fully independent confirmation — the gold leg is the same LBMA series the
+structural layer uses, so only the equity side and the window are new.
 
 More importantly, this layer **independently confirms the mechanism claimed in
 §1.6**.  Over 1988-2026 the S&P 500 and gold had unusually *similar* drifts
@@ -260,6 +279,153 @@ period too, stay negative (−3.4% and −4.9%).
 
 The sign of the rebalancing effect tracks the drift gap, not the sample.  That
 is a mechanism, not a curve fit.
+
+### 1.11a Exact-index validation (official S&P 500 TR + Nasdaq-100 TR, 1999-2026)
+
+Nasdaq publishes the **Nasdaq-100 Total Return Index (XNDX)** and its history
+was retrieved from Nasdaq's own Global Index Data Service (daily closes,
+1999-03-04 → 2026-07-31).  Combined with the official S&P 500 Total Return
+index, the LBMA gold price and the Treasury bill, this gives a **proxy-free
+layer of four exposures over 328 months (1999-04 → 2026-07)** covering the
+dot-com collapse, the GFC, COVID and 2022.
+
+Rolling windows, equal weights, annual rebalancing:
+
+| | 10y median / p10 / worst CAGR | 20y median / p10 / worst | 20y median max DD |
+|---|---|---|---|
+| QQQ | 13.17 / −0.95 / −7.86 | 13.96 / 6.48 / 3.69 | −49.7% |
+| QQQ+GOLD | 11.89 / **8.83** / **4.43** | 12.27 / **8.84** / **7.68** | **−26.1%** |
+| SPY+QQQ | 10.84 / 0.37 / −3.97 | 11.97 / 6.76 / 4.69 | −50.3% |
+| SPY | 8.50 / 1.20 / −3.00 | 9.74 / 6.06 / 4.79 | −51.0% |
+| GOLD | 8.01 / 1.66 / −0.60 | 9.54 / 8.52 / 7.78 | −41.6% |
+| CASH | 1.36 / 0.45 / 0.31 | 1.52 / 1.21 / 1.19 | 0% |
+
+The incremental tests (`results/tables/incremental_effects.csv`):
+
+| step | horizon | Δ median CAGR | Δ p10 CAGR | Δ median max DD | windows helped |
+|---|---|---|---|---|---|
+| SPY → SPY+QQQ | 10y | **+2.35pp** | −0.83pp | +1.5pp | **100%** |
+| SPY → SPY+QQQ | 20y | **+2.23pp** | **+0.71pp** | +0.6pp | **100%** |
+| SPY+QQQ → +GOLD | 10y | +0.36pp | **+6.58pp** | **+18.2pp** | 30% |
+| SPY+QQQ → +GOLD | 20y | −0.43pp | **+1.30pp** | **+20.3pp** | 0% |
+| SPY+QQQ → +CASH | 20y | −3.17pp | −1.22pp | +15.4pp | 0% |
+
+Two conclusions survive on exact data, and one is strengthened:
+
+* **Adding the Nasdaq-100 to broad U.S. equity helped in every single rolling
+  10- and 20-year window** — and this sample begins at the dot-com peak, so
+  every 20-year window contains the −81% collapse from its first months.  That
+  is a demanding test, and QQQ passed it.
+* **Gold buys the left tail and pays for it in the median**, exactly as the
+  proxy layer said: at 20 years it costs 0.43pp of median CAGR and returns
+  1.30pp on the 10th percentile and 20.3 points of drawdown.
+* **Cash is a one-directional cost**, again.
+
+What this layer cannot do is test SPMO or SCHD, and its 89 twenty-year windows
+come from **one** independent 27-year history.
+
+### 1.11b What could not be retrieved, precisely
+
+Two official index histories were **not** obtained.  They exist and are
+published — the earlier draft of this report wrongly implied otherwise, and
+that wording has been corrected.  What failed was retrieval, not existence:
+
+| needed | source | date range wanted | what happened |
+|---|---|---|---|
+| S&P 500 Momentum Index (USD) **Total Return**, monthly or daily closes | S&P Dow Jones Indices, `spglobal.com/spdji/en/indices/equity/sp-500-momentum-index/` | 1999-01 → 2026-07 | HTTP **403** from S&P's own bot protection on every path tried: the index page, the `idsapi` data endpoint, the `index-data` `.dot` export, the legacy `us.spindices.com` host (DNS failure), and full browser-header requests |
+| Dow Jones U.S. Dividend 100 **Total Return**, monthly or daily closes | S&P Dow Jones Indices, `spglobal.com/spdji/en/indices/equity/dow-jones-us-dividend-100-index/` | 1999-01 → 2026-07 | identical 403 |
+
+Fallbacks attempted and their outcomes: Yahoo Finance *lists* `^SP500MUP`,
+`^DJUSDIVT` and `^DJUSDIV` but serves **no history** for them (one data point,
+today's quote); Invesco's SPMO pages return HTTP 406 and Schwab's SCHD pages
+403; a real Chromium browser (installed here) cannot reach **any** host through
+this sandbox's egress proxy (`ERR_CONNECTION_RESET` on every site, including
+`example.com`), so the browser route that would defeat the bot check is
+unavailable in this environment.  The egress proxy itself permits
+`www.spglobal.com` — the 403 body is S&P's own error page, and the proxy logged
+no policy denial — so this is the vendor's bot protection, not a network block.
+
+**What would unblock it:** either file, downloaded manually from the S&P DJI
+index page's "Performance" / historical-data export and saved as
+`data/raw/spdji_SP500MOMENTUM_TR.csv` and
+`data/raw/spdji_DJUSDIVIDEND100_TR.csv` with columns `date,close`.  The loader
+hook and a matching manifest entry are the only code changes needed.
+
+No proxy was substituted for these two series anywhere in this section.
+
+### 1.11c Where the exact data disagrees with the proxy layer
+
+The live-ETF layer (2015-11 → 2026-07) is exact for all six exposures and is the
+only exact evidence that touches SPMO and SCHD.  Running the same incremental
+tests there:
+
+| step | Δ median 5y CAGR | Δ median 10y CAGR | windows helped (10y) |
+|---|---|---|---|
+| SPMO → QQQ+SPMO | +1.38pp | +1.09pp | 50% |
+| QQQ+SPMO → +SCHD | **−2.14pp** | **−2.00pp** | **0%** |
+| QQQ+SCHD+SPMO → +GOLD | −0.84pp | −0.79pp | 70% |
+| QQQ+SCHD+SPMO → +SPY | −0.54pp | −0.52pp | 0% |
+| QQQ+SCHD+SPMO → +CASH | −3.37pp | −3.69pp | 0% |
+
+**The SCHD finding does not survive.**  §1.3 reported, from the proxy layer,
+that adding SCHD to QQQ+SPMO raised both the median and the 10th percentile.
+On the exact ETFs over 2015-2026 it lowered the median by about 2 percentage
+points a year and helped in none of the ten independent-ish 10-year windows.
+
+Both readings can be true of their own data — 2015-2026 was a growth-led decade
+in which a dividend-quality screen was a headwind, while 1971-2026 contains long
+stretches where it was a tailwind — but the honest statement is that **SCHD's
+incremental value is the finding that depends most on the proxy and the
+period**, and it is not confirmed by exact data.  Note also that this layer has
+only ten 10-year windows drawn from one 10.75-year history.
+
+### 1.11d The rebalancing result does not transfer to this investor
+
+§1.6 reported that contribution-only rebalancing captures 79-94% of the
+annual-rebalancing gain.  **That figure is specific to a pure-accumulation
+setup** — starting from zero wealth, where early contributions *are* the
+portfolio — and it does not describe an investor who already holds a portfolio.
+
+Modelling the investor directly (starting wealth 20 units, 1 real unit a year of
+new cash — a 5% contribution/wealth ratio — over 20-year rolling windows on the
+primary sample), and varying what happens after year 5:
+
+| after year 5 | annual rebalance gain vs R0 | contribution-only gain | **capture share** |
+|---|---|---|---|
+| A: 1.0/yr (unchanged) | +8.65% | +1.63% | **18.8%** |
+| B: 0.5/yr | +9.65% | +0.96% | **9.9%** |
+| C: 0.25/yr | +9.73% | +0.64% | **6.6%** |
+| D: 0.0/yr | +10.33% | +0.19% | **1.9%** |
+
+The generic sweep shows the relationship is monotone in the contribution ratio
+and never reaches half, even for a saver contributing a fifth of their wealth
+every year (`results/tables/contribution_capture_by_ratio.csv`):
+
+| annual contribution / wealth | 0% | 2% | 5% | 10% | 20% |
+|---|---|---|---|---|---|
+| capture share | 0% | 7.5% | **18.8%** | 31.4% | 42.2% |
+
+Contribution-only rebalancing also stops holding the allocation together: mean
+weight deviation from target is 4.5% at a 5% contribution ratio and 6.1% with no
+contributions at all, against 2.2% for annual rebalancing and 2.3% for a ±20%
+band.
+
+Which rule is best for *this* investor (QQQ+SCHD+SPMO, 20-year windows, median
+terminal wealth relative to never rebalancing):
+
+| scenario | R1 contrib-only | R2 annual | R3 ±10% | R3 ±20% | **R3 ±30%** |
+|---|---|---|---|---|---|
+| A (1.0/yr) | 1.016 | 1.087 | 1.075 | 1.082 | **1.107** |
+| B (0.5/yr) | 1.010 | 1.097 | 1.081 | 1.089 | **1.122** |
+| C (0.25/yr) | 1.006 | 1.097 | 1.091 | 1.091 | **1.130** |
+| D (0/yr) | 1.002 | 1.103 | 1.095 | 1.094 | **1.127** |
+| turnover/yr (scenario D) | 0.0% | 3.7% | 5.7% | 2.8% | **2.4%** |
+| cumulative sales / initial wealth (D) | 0.0× | 4.1× | 6.0× | 2.6× | **2.2×** |
+
+A **±30% relative band wins on terminal wealth in every scenario while selling
+the least** — roughly half the turnover of annual rebalancing and a third of a
+±10% band.  Its advantage over ±20% is inside the noise; its advantage over
+contribution-only is not.
 
 ### 1.12 Timing, fee and tax sensitivities change nothing
 
@@ -281,7 +447,8 @@ is a mechanism, not a curve fit.
 Reasonable readings of §1, not measurements.
 
 1. **Momentum, not the momentum ETF, is what the long record supports.**  The
-   effect is large, present in every era and on an independent 1927-2026 sample,
+   effect is large, present in every era and on the longer 1927-2026 sample
+   (which extends the primary window rather than being independent of it),
    and it is the single most consistent source of excess return in the data.
    It is also the exposure whose measurement is most flattered by the proxy.
    The defensible position is that momentum earns something real but smaller
@@ -384,10 +551,10 @@ about what happened between 1927 and 2026.
 
 | Exposure | Classification | Why |
 |---|---|---|
-| **SPMO** | **CORE** | Highest median rolling CAGR at every horizon and on the independent 1927-2026 sample; in all four screening survivors. Discounted for proxy optimism (§1.7). |
-| **QQQ** | **CORE** | Raises median and terminal wealth in every survivor; its tail is only tolerable in combination. |
-| **SCHD** | **USEFUL DIVERSIFIER** | Lowered volatility and drawdown in all five eras and raised median 20-year CAGR by 0.71pp when added to QQQ+SPMO. The prior that it adds nothing was **rejected**. |
-| **GOLD** | **USEFUL DIVERSIFIER** | Consistent drawdown and volatility reduction in every era, and the best 10th-percentile outcome in the study — bought with about 1pp/yr of median return. |
+| **SPMO** | **CORE, with a caveat that grew in this revision** | Highest median rolling CAGR at every horizon and on the longer 1927-2026 extension (not an independent sample -- it contains the primary window); in all four screening survivors. Discounted for proxy optimism (§1.7) and **never confirmed on an exact index** (§1.11b). |
+| **QQQ** | **CORE — now confirmed on exact index data** | Raises median and terminal wealth in every survivor; its tail is only tolerable in combination. Adding it to broad equity helped in **100%** of rolling 10- and 20-year windows on the official S&P 500 TR / Nasdaq-100 TR layer, a sample that begins at the dot-com peak (§1.11a). |
+| **SCHD** | **INSUFFICIENT EXACT DATA** *(was: useful diversifier)* | On the proxy layer it lowered volatility and drawdown in all five eras and raised median 20-year CAGR by 0.71pp when added to QQQ+SPMO. On the exact ETFs (2015-2026) it **lowered** the median by ~2pp/yr and helped in 0% of 10-year windows (§1.11c). Its index history could not be retrieved (§1.11b), so the disagreement cannot be settled here. |
+| **GOLD** | **USEFUL DIVERSIFIER — confirmed on exact index data** | Consistent drawdown and volatility reduction in every era, and the best 10th-percentile outcome in the study — bought with about 1pp/yr of median return. On the exact-index layer, adding gold to SPY+QQQ cost 0.43pp of median 20-year CAGR and returned +1.30pp on the 10th percentile and 20.3 points of drawdown (§1.11a). |
 | **SPY** | **NO EVIDENCE OF ADDITIONAL VALUE** | Adding it to QQQ+SCHD+SPMO lowered CAGR in all five eras and changed drawdown by at most 1.0 point in any era. It is dominated by, not different from, the mix. |
 | **CASH** | **NO EVIDENCE OF ADDITIONAL VALUE** *(as a permanent allocation for an accumulating investor)* | Consistent, one-directional cost; no CASH combination survived screening. Distinct from cash held for spending needs, which this study does not model. |
 
@@ -485,3 +652,77 @@ about the left tail, and this study does not decide it for you.
 
 *Generated by `run_research.py`.  Tables: `results/tables/`.  Charts:
 `results/charts/`.  Corrections and failures: `results/run_log.md`.*
+
+---
+
+## 5. Decision gate
+
+### Verdict: **MODIFIED**
+
+The core of the previous conclusion holds and part of it is now confirmed on
+exact index data.  Two components changed materially.
+
+| previous claim | status after this revision |
+|---|---|
+| QQQ adds value to a broad-equity core | **CONFIRMED on exact indices** — helped in 100% of rolling 10y and 20y windows, 1999-2026 (§1.11a) |
+| Gold improves the left tail at a cost in median return | **CONFIRMED on exact indices** — −0.43pp median, +1.30pp p10, +20.3pp drawdown at 20y (§1.11a) |
+| SPY adds nothing once the mix is held | **CONFIRMED** on both exact layers — 0% of windows helped (§1.11a, §1.11c) |
+| Permanent cash is a one-directional cost | **CONFIRMED** on both exact layers |
+| SCHD adds incremental value to QQQ+SPMO | **NOT CONFIRMED** — reversed sign on exact ETFs; index history unavailable (§1.11b, §1.11c) |
+| SPMO is the strongest single exposure | **INSUFFICIENT EXACT DATA** — no exact evidence beyond 2015-11; the long-horizon result rests entirely on the momentum proxy |
+| Contribution-only rebalancing captures 79-94% of the annual gain | **NOT CONFIRMED for this investor** — it captures 19% now and 2% after contributions stop (§1.11d) |
+| Favourable weights form a broad plateau | **CONFIRMED** — unchanged (§1.5) |
+
+### The seven questions
+
+**1. Does exact-index evidence support adding QQQ to SPMO?**
+Indirectly, yes — and directly for adding QQQ to broad equity.  On official
+indices, SPY → SPY+QQQ helped in **100%** of rolling 10- and 20-year windows
+from 1999, raising the median by 2.2-2.4pp/yr.  The SPMO-specific pair can only
+be tested on live ETFs (2015-2026), where QQQ → SPMO+QQQ added 1.1-1.4pp of
+median CAGR but helped in only 50% of windows.
+
+**2. Does exact-index evidence support adding SCHD to QQQ+SPMO?**
+**No.**  There is no retrievable SCHD index history, and on the exact ETFs it
+subtracted about 2pp/yr of median CAGR and helped in 0% of 10-year windows.
+The favourable proxy result stands only as proxy evidence.
+
+**3. Does Gold still improve left-tail outcomes, and at what return cost?**
+Yes, on exact data.  At 20 years it cost **0.43 percentage points of median
+CAGR** and returned **+1.30pp on the 10th percentile** and **20.3 points of
+drawdown**.  At 10 years the median cost was zero (+0.36pp) and the 10th
+percentile gained 6.6pp.  The trade is real and the price is roughly half a
+point of median return a year.
+
+**4. Do SPY or permanent Cash add value?**
+No, on every layer tested.  Adding SPY to the mix helped in 0% of windows on
+both exact layers.  Adding cash cost 2.9-5.0pp of median CAGR and helped in 0%
+of windows, buying only drawdown.
+
+**5. Does the broad SPMO/QQQ/SCHD allocation plateau survive?**
+The plateau *shape* survives — nothing in this revision touched §1.5, and the
+grid maximum's worst neighbour is still 2.4% below it.  But the plateau is
+measured on the proxy layer, and since SCHD's contribution is no longer
+confirmed, the honest reading is that **the plateau is broad in the QQQ/SPMO
+dimensions and uncertain in the SCHD dimension**.
+
+**6. Given 20:1 wealth-to-contribution now and much lower contributions after
+year 5, what rebalancing rule remains robust?**
+A **±30% relative band, contributions applied first**.  It produced the highest
+median terminal wealth in all four retirement scenarios (1.107× to 1.130× versus
+never rebalancing) while selling the least — 2.2-2.6× initial wealth cumulatively
+over 20 years, against 4.1-4.5× for annual rebalancing and 5.4-6.0× for a ±10%
+band.  Contribution-only is **not** adequate for this investor: it captures 19%
+of the available gain today and 2% once contributions stop, and lets the
+allocation drift 4.5-6.1% away from target.
+
+**7. Which previous findings depended materially on proxy choice?**
+Three.  (a) **SCHD's incremental value** — reversed on exact data.  (b) **SPMO's
+dominance** — untestable beyond 2015 and already known to be worth no more than
+~145bp of implementation cost.  (c) **The contribution-only rebalancing result**
+— which depended not on a data proxy but on a *modelling* proxy: an investor
+starting from zero wealth rather than one holding a portfolio.
+
+Findings that did **not** depend on the proxy: QQQ's incremental value, gold's
+left-tail trade, SPY's redundancy, cash's cost, and the drift-gap mechanism
+behind the rebalancing result.

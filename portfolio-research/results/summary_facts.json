@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-14 22:15:00",
+  "generated": "2026-08-15 00:21:08",
   "samples": {
     "structural": {
       "start": "1971-09",
@@ -26,6 +26,18 @@
         "CASH"
       ],
       "label": "STRUCTURAL_PROXY_TEST"
+    },
+    "exact_index": {
+      "start": "1999-04",
+      "end": "2026-07",
+      "months": 328,
+      "exposures": [
+        "SPY",
+        "QQQ",
+        "GOLD",
+        "CASH"
+      ],
+      "label": "OFFICIAL_INDEX_EXTENDED"
     },
     "official_index": {
       "start": "1988-02",

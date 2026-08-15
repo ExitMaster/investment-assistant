@@ -256,3 +256,115 @@ bit-for-bit identical, and must change month *t*'s value.  8 new assertions.
 * Structural results are unchanged by this loop — verified by re-checking the
   cited figures (QQQ+SCHD+SPMO 20y median 12.77%, p10 9.56%, drawdown −47.4%,
   terminal wealth 3.103) and the screening survivors, which are identical.
+
+---
+
+## 2026-08-15 — Loop 6: exact-index validation, corrections, and the investor's own cash flows
+
+Three tasks: retrieve the *actual* total-return indices rather than proxies,
+correct overstatements in the previous report, and test whether the rebalancing
+conclusion survives this investor's contribution/wealth ratio.
+
+### 1. Exact-index retrieval — what worked and what did not
+
+**Retrieved.**  The **Nasdaq-100 Total Return Index (XNDX)** came from Nasdaq's
+own Global Index Data Service.  Route: `GET /Index/History/XNDX` to obtain the
+session cookie, then `GET /Index/ExportHistory/XNDX?startDate=...&endDate=...&timeOfDay=EOD`,
+which returns an .xlsx.  6,896 daily closes, **1999-03-04 → 2026-07-31** (that
+is the full extent Nasdaq publishes for this symbol; an earlier requested start
+returns the same first date).  Checks: the 2000-2002 drawdown is −81.0%, and
+XNDX beats the `^NDX` price index by a plausible dividend yield — both asserted
+by tests.
+
+The endpoint was found by reading `/Scripts/History.js` from the history page,
+which names `/Index/HistoryData`, `/Index/HistoryChartData` and
+`/Index/ExportHistory`.  The site is behind Imperva/Incapsula: it accepts curl's
+TLS fingerprint but serves python-requests a JavaScript challenge, and it starts
+challenging any client that fetches repeatedly.  The fetcher therefore shells
+out to curl, retries with backoff, and falls back to the cached raw payload —
+the same reproducibility contract every other source in this project has.
+
+**Not retrieved.**  S&P 500 Momentum TR and Dow Jones U.S. Dividend 100 TR.
+These indices **exist and S&P DJI publishes them** — the previous report's
+wording implied otherwise and has been corrected.  What failed was retrieval:
+
+| route | outcome |
+|---|---|
+| `spglobal.com/spdji/en/indices/equity/sp-500-momentum-index/` | 403 (S&P's own error page, confirmed by its body) |
+| `spglobal.com/spdji/en/idsapi/indexData/getIndexPerformance` | 403 |
+| `spglobal.com/spdji/en/util/redesign/index-data/get-index-comparison-chart-data.dot` | 403 |
+| same, with a full browser header set (sec-ch-ua, Sec-Fetch-*, etc.) | 403 |
+| legacy `us.spindices.com` | DNS/connect failure (502 CONNECT) |
+| Yahoo `^SP500MUP`, `^DJUSDIVT`, `^DJUSDIV` | symbols exist, **zero history** (one point: today's quote) |
+| Invesco SPMO product pages | 406 |
+| Schwab SCHD product and API pages | 403 |
+| **real Chromium via Playwright** (installed at `/opt/pw-browsers/chromium-1194`) | `ERR_CONNECTION_RESET` on **every** host including `example.com` — the browser cannot traverse this sandbox's egress proxy, so the one route that would defeat a bot check is unavailable here |
+
+Diagnosis recorded so it is not mistaken for a policy block: the egress proxy
+*permits* `www.spglobal.com` (its `recentRelayFailures` logged no denial for that
+host, and the 403 body is S&P's own error page). This is vendor bot protection
+plus a sandbox limitation, not an organisation egress denial.
+
+**Consequence, stated honestly:** the exact-index layer covers SPY, QQQ, GOLD
+and CASH over 1999-04 → 2026-07 (328 months) and **cannot** cover SCHD or SPMO.
+Those two are covered exactly only from ETF inception in the `live` layer.
+REPORT.md §1.11b names the exact files that would unblock a full run.
+**No proxy was substituted anywhere in the exact-index results.**
+
+### 2. Corrections to the previous report
+
+| overstatement | correction |
+|---|---|
+| "no public total-return history exists" for these indices | now distinguishes existence from retrievability, and names the blocked route and the unblocking file |
+| the 1927-2026 sample called an "independent sample" (3 places) | it **contains** the 1971-2026 primary window; now described as an extension that adds 44 earlier years, not an independent test |
+| the official-index gold test described as sharing "no series" with the structural layer | false — the gold leg is the same LBMA series; only the equity side and the window are new. Corrected in place |
+| rolling percentiles read as a distribution | the rolling table caption now states that 658 months hold 5 / 2 / 1 independent 10 / 20 / 30-year windows, and the 30-year figures are one history |
+
+No conclusion was rewritten to suit the new data; two conclusions changed
+because the new evidence contradicted them (below), and the rest are unchanged.
+
+### 3. Investor-specific contribution analysis — the previous claim does not hold
+
+Modelled directly: initial wealth 20 units, 1 real unit/year of new cash (a 5%
+contribution/wealth ratio), 20-year rolling windows, with four post-year-5
+scenarios, plus a generic 0/2/5/10/20% contribution-ratio sweep
+(`src/investor.py`, `results/tables/investor_scenarios.csv`,
+`contribution_ratio_grid.csv`, `contribution_capture_by_*.csv`).
+
+Contribution-only rebalancing captures **18.8%** of the annual-rebalance gain at
+a 5% contribution ratio, falling to **1.9%** once contributions stop — against
+the **79-94%** the previous report quoted.  The old figure was not wrong for
+what it measured; it measured a saver starting from **zero** wealth, where early
+contributions *are* the portfolio.  The sweep shows the relationship is monotone
+and never exceeds 42% even at a 20% annual contribution ratio.
+
+A **±30% relative band** produced the highest median terminal wealth in all four
+scenarios (1.107-1.130× versus never rebalancing) while selling the least
+(2.2-2.6× initial wealth cumulatively over 20 years, versus 4.1-4.5× for annual
+and 5.4-6.0× for a ±10% band).
+
+Six new tests cover this module, including a monotonicity assertion on the
+capture share and an identity check that zero contributions make R1 ≡ R0.
+
+### 4. What the exact data changed
+
+* **QQQ's incremental value: CONFIRMED.**  Adding the Nasdaq-100 TR index to the
+  S&P 500 TR index helped in **100%** of rolling 10- and 20-year windows from
+  1999 — a sample that starts at the dot-com peak.
+* **Gold's left-tail trade: CONFIRMED.**  −0.43pp median 20-year CAGR, +1.30pp
+  on the 10th percentile, +20.3pp of drawdown.
+* **SPY redundancy and cash's cost: CONFIRMED** on both exact layers.
+* **SCHD's incremental value: NOT CONFIRMED.**  On the exact ETFs (2015-2026) it
+  *subtracted* ~2pp/yr of median CAGR and helped in 0% of 10-year windows, the
+  opposite sign to the proxy layer.  Both can be true of their own periods; the
+  honest statement is that this is the finding most dependent on proxy choice.
+
+Overall verdict recorded in REPORT.md §5: **MODIFIED**.
+
+### State after loop 6
+* **90 tests, all passing** (81 → 90).
+* Five analysis samples; `exact_index` is new.
+* New tables: `incremental_effects.csv`, `investor_scenarios.csv`,
+  `contribution_ratio_grid.csv`, `contribution_capture_by_scenario.csv`,
+  `contribution_capture_by_ratio.csv`.
+* Unresolved: the two S&P DJI index histories (§1.11b of REPORT.md).

@@ -434,6 +434,30 @@ def main() -> None:
     sens = phase6_sensitivities(primary, cfg, sens_combos)
     sens.to_csv(TABLES / "sensitivity_analysis.csv", index=False)
 
+    log("phase 7b: incremental effect of each added exposure")
+    inc = pd.concat(
+        [A.incremental_table(engines[s], (5, 10, 15, 20))
+         for s in ("structural", "exact_index", "live", "official_index")],
+        ignore_index=True)
+    inc.to_csv(TABLES / "incremental_effects.csv", index=False)
+    log(f"  {len(inc)} incremental comparisons across "
+        f"{inc['sample'].nunique()} samples")
+
+    log("phase 7c: investor-specific contribution scenarios")
+    from src import investor
+    cand = [tuple(c.split("+")) for c in survivors.combo] + [("SPMO",), ("QQQ",)]
+    cand = [c for c in cand if all(a in primary.sample.exposures for a in c)]
+    scen = investor.run_investor_scenarios(primary, cand, cfg)
+    scen.to_csv(TABLES / "investor_scenarios.csv", index=False)
+    grid_ratio = investor.run_ratio_grid(primary, cand, cfg)
+    grid_ratio.to_csv(TABLES / "contribution_ratio_grid.csv", index=False)
+    investor.capture_summary(scen, ["scenario", "combo"]).to_csv(
+        TABLES / "contribution_capture_by_scenario.csv", index=False)
+    investor.capture_summary(grid_ratio, ["annual_contribution_ratio", "combo"]
+                             ).to_csv(TABLES / "contribution_capture_by_ratio.csv",
+                                      index=False)
+    log(f"  {len(scen)} scenario rows, {len(grid_ratio)} ratio-grid rows")
+
     log("phase 8b: implementation-cost break-even for the proxy exposures")
     drags = [0, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500]
     cost_combos = [("SPMO",), ("SPY",), ("QQQ",), ("SCHD",),
