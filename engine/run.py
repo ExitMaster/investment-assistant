@@ -268,7 +268,8 @@ def run_intraday():
             if is_new_day and saved:
                 # 새 거래일 첫 실행: 확정 종가 히스토리로 ATH 재계산(확정 고점 갱신)
                 closes = get_daily_closes_for_ath(ticker, lookback)
-                rebuilt = build_ath_from_history(closes, reset_pct=reset_pct) if closes else None
+                has_closes = closes is not None and not closes.empty
+                rebuilt = build_ath_from_history(closes, reset_pct=reset_pct) if has_closes else None
                 if rebuilt is not None:
                     obj = rebuilt
             # 한 레벨은 같은 ATH 구간에서 1회만 발화. ATH가 위로 갱신되면 전 레벨 재무장.
@@ -284,7 +285,8 @@ def run_intraday():
                 # 현재가 한 점이 아니라 현재 ATH 구간의 과거 이력 전체에서 가장 깊은 하락·
                 # 가장 높은 초과상승을 기준으로 삼아야, 회복 후 등록해도 중복 알림이 안 간다.
                 hist = get_daily_closes_for_ath(ticker, lookback)
-                if hist:
+                # pandas Series는 `if hist:`가 ValueError(진위 불명)를 던진다 → None/empty로 판정
+                if hist is not None and not hist.empty:
                     regime_dd, regime_gain = final_regime_extremes(hist, reset_pct)
                 else:
                     regime_dd, regime_gain = obj.drawdown_pct(price), obj.gain_pct(price)
